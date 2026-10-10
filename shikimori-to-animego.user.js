@@ -2,20 +2,22 @@
 // @name         Shikimori to AnimeGO Importer
 // @name:ru      Перенос Shikimori в AnimeGO
 // @namespace    shiki-to-animego
-// @version      0.4.1
+// @version      0.5.0
 // @updateURL    https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @downloadURL  https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
-// @description  One-time anime-list migration with manual review and dry-run
+// @description  Import Shikimori anime into anime-go.org with preview and safety checks
+// @description:ru Перенос аниме из Shikimori на anime-go.org с проверкой совпадений
 // @match        https://anime-go.org/*
 // @match        https://www.anime-go.org/*
 // @grant        none
 // ==/UserScript==
 (function () {
   "use strict";
-  const statuses = { watching: "watching", completed: null, on_hold: "onhold", dropped: "dropped", planned: "planned", rewatching: null };
+  const statuses = { watching: "watching", completed: "completed", on_hold: "onhold", dropped: "dropped", planned: "planned", rewatching: null };
   const names = { watching: "Смотрю", completed: "Просмотрено", on_hold: "Отложено",
     dropped: "Брошено", planned: "Запланировано", rewatching: "Пересматриваю" };
-  // Completed is intentionally disabled: /rate adds Favorites, not Completed.
+  // RU: «Просмотрено» переносится как отдельный статус. Оценка не устанавливает его.
+  // EN: Completed is an independent list status, not a side effect of rating.
   const eligible = item => Boolean(statuses[item.status]);
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const clean = v => String(v || "").normalize("NFKC").toLowerCase().replace(/ё/g, "е")
@@ -62,7 +64,8 @@
     });
     return [...found.values()];
   }
-  // Season-defining punctuation matters: ! vs !!, ? vs :, ××, ∬, √A, etc.
+  // RU: !, ?, ×× и др. могут отличать сезоны.
+  // EN: Season-defining punctuation must not be ignored (e.g. ! vs !!).
   function exactName(value) {
     return String(value || "").normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
   }
@@ -72,7 +75,8 @@
     const originals = [item.title, item.russian].filter(Boolean).map(exactName);
     const destinations = [candidate.original, candidate.title].filter(Boolean).map(exactName);
     if (originals.some(x => destinations.includes(x))) return 1;
-    // Different punctuation may distinguish seasons and specials: never auto-select it.
+    // RU: Не выбираем автоматически при отличающейся пунктуации.
+    // EN: Never auto-select when punctuation differs.
     if (a.some(x => b.includes(x))) return 0.84;
     let result = 0;
     a.forEach(x => b.forEach(y => {
@@ -85,7 +89,8 @@
   function choose(item, candidates) {
     const ranked = candidates.map(c => ({...c, confidence:confidence(item,c)}))
       .sort((a,b)=>b.confidence-a.confidence);
-    // Exact title must be unique; sequels with same title are never auto-selected.
+    // RU: Выбираем только уникальное точное совпадение, не смешиваем сезоны.
+    // EN: Auto-select only a unique exact title match; do not mix seasons.
     const chosen = ranked[0]?.confidence === 1 && ranked.filter(c=>c.confidence===1).length===1
       ? ranked[0].id : "";
     return { ranked, chosen };
@@ -121,8 +126,12 @@
       const explicit = String(entry.chosen || "");
       item.chosen = eligible(item) ?
         (explicit && item.candidates.some(c=>c.id===explicit) ? explicit : evaluated.chosen) : "";
-      item.result = entry.result === "imported" ? "imported" : entry.result === "verify_failed" ? "verify_failed" : "pending";
-      item.note = (item.result === "imported" || item.result === "verify_failed") ? String(entry.note || "Требуется ручная проверка")
+      // RU: Ошибки старой версии не блокируют повторную попытку после проверки.
+      // EN: Previously failed entries may be retried after reviewing the report.
+      item.result = entry.result === "imported" ? "imported" : "pending";
+      item.note = entry.result === "verify_failed"
+        ? "Предыдущая попытка не подтверждена. Проверьте и повторите при необходимости"
+        : item.result === "imported" ? String(entry.note || "Перенесено ранее")
         : !eligible(item) ? "Статус пока не поддерживается"
         : item.chosen ? "Точное совпадение, проверьте" : "Требует проверки";
       return item;
@@ -155,10 +164,10 @@
     '<button id="ag-restore">Восстановить результаты без поиска</button></div>'+
     '<p id="ag-status">Файл пока не выбран.</p>'+
     '<div class="controls"><label>Ваш ID профиля AnimeGO: <input id="ag-profile-id" type="text" inputmode="numeric" placeholder="например 11959" maxlength="12" style="width:100px"></label>'+
-    '<label><input type="checkbox" id="ag-vote"> Дополнительные оценки для остальных статусов (экспериментально)</label>'+
+    '<label><input type="checkbox" id="ag-vote"> Также переносить оценки отдельно (экспериментально)</label>'+
     '<label>Максимум за запуск: <input type="number" id="ag-limit" min="1" max="10000" value="2" style="width:75px"></label>'+
     '<button id="ag-import">2. Импортировать выбранные</button><button id="ag-report">Скачать отчёт JSON</button></div>'+
-    '<p class="help">Только уникальные точные совпадения выбираются автоматически. Просмотрено временно отключено: оценка добавляет тайтл в Любимые, но не гарантирует Просмотрено. Пересматриваю и прогресс серий не поддерживаются.'+
+    '<p class="help">Только уникальные точные совпадения выбираются автоматически. Просмотрено переносится отдельной кнопкой списка; оценки отдельно (по желанию). Сначала проверьте на одном аниме. Пересматриваю и прогресс серий не поддерживаются.'+
     ' При ошибках 401/403/429 импорт прекращается. Не закрывайте вкладку во время записи.</p>'+
     '<div class="scroll"><table><thead><tr><th>Shikimori</th><th>Статус</th><th>Выберите AnimeGO</th><th>Результат</th></tr></thead>'+
     '<tbody id="ag-body"></tbody></table></div></section>';
@@ -247,7 +256,7 @@
     finally {busy=false;}
   }
   async function currentWatchStatus(id) {
-    const res = await fetch("/api/watchlist/" + id, {credentials:"same-origin"});
+    const res = await fetch("/api/watchlist/" + id, {credentials:"same-origin", cache:"no-store"});
     if (!res.ok) throw new Error("Список: HTTP " + res.status);
     const doc = new DOMParser().parseFromString(await res.text(), "text/html");
     const buttons = [...doc.querySelectorAll("[data-fav-list]")];
@@ -272,7 +281,11 @@
     if (!(res.headers.get("content-type") || "").includes("json")) throw new Error("AnimeGO вернул не JSON");
     const data = await res.json();
     if (!data.ok) throw new Error("AnimeGO отклонил изменение статуса");
-    const after = await currentWatchStatus(r.chosen);
+    let after = await currentWatchStatus(r.chosen);
+    for (let i = 0; i < 2 && after.active !== desired; i++) {
+      await wait(350);
+      after = await currentWatchStatus(r.chosen);
+    }
     if (after.active !== desired) throw new Error("Статус не подтвердился при проверке");
     return "Статус перенесён";
   }
@@ -318,22 +331,6 @@
     const match = scoreRaw.match(/\d+/);
     return {present:true, score:match ? Number(match[0]) : null};
   }
-  async function postCompleted(r) {
-    if (!r.score) throw new Error("Просмотрено без оценки не поддерживается");
-    const before = await completedState(r.chosen);
-    if (before.present && before.score === r.score) return "Уже в «Просмотрено» с правильной оценкой";
-    const voteResult = await postVote(r);
-    const after = await completedState(r.chosen);
-    if (!after.present || after.score !== r.score) {
-      const reason = after.present
-        ? "Тайтл в «Просмотрено», но оценка отличается"
-        : "Тайтл не найден в «Просмотрено»";
-      const error = new Error("Не удалось подтвердить перенос: " + reason + ". Проверьте профиль вручную");
-      error.needsVerification = true;
-      throw error;
-    }
-    return "Просмотрено и оценка подтверждены (" + voteResult + ")";
-  }
   async function apply() {
     if(busy)return;
     if(!searched)return info("Сначала сделайте поиск и проверьте совпадения.");
@@ -341,7 +338,7 @@
     const selected = items.filter(x=>x.chosen && eligible(x) && x.result!=="imported" && x.result!=="verify_failed").slice(0,batchSize);
     if (selected.some(x => x.status === "completed") &&
         !/^\d{1,12}$/.test(el("ag-profile-id").value.trim()))
-      return info("Для переноса просмотренных укажите свой ID профиля AnimeGO");
+      return info("Для проверки «Просмотрено» укажите ID своего профиля AnimeGO");
     const allSelected = items.filter(x=>x.chosen && eligible(x));
     const seenIds = new Set();
     for (const row of allSelected) {
@@ -355,9 +352,28 @@
       if(stopped)break;
       try {
         if (r.status === "completed") {
-          r.note = await postCompleted(r);
+          // RU: Переносим сам статус отдельно от оценки, потом сверяем раздел профиля.
+          // EN: Set Completed independently of rating, then verify the profile section.
+          r.note = await postStatus(r);
+          const profile = await completedState(r.chosen);
+          if (!profile.present) {
+            const failure = new Error("Аниме не появилось в разделе «Просмотрено». Проверьте профиль");
+            failure.needsVerification = true;
+            throw failure;
+          }
+          if (el("ag-vote").checked && r.score) {
+            r.note += "; " + await postVote(r);
+            const rechecked = await completedState(r.chosen);
+            if (!rechecked.present || rechecked.score !== r.score) {
+              const failure = new Error("Не удалось подтвердить оценку/статус в профиле");
+              failure.needsVerification = true;
+              throw failure;
+            }
+          }
+          r.note += "; статус подтверждён в профиле";
         } else {
-          // For other statuses, vote first, then restore the desired list via /fav/set.
+          // RU: Оценки могут влиять на «Любимые», поэтому статус ставится последним.
+          // EN: Ratings may affect Favorites, so apply the requested status last.
           if (el("ag-vote").checked && r.score) {
             const result = await postVote(r);
             r.note = result + "; ";
