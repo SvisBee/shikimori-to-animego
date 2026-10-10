@@ -2,7 +2,9 @@
 // @name         Shikimori to AnimeGO Importer
 // @name:ru      Перенос Shikimori в AnimeGO
 // @namespace    shiki-to-animego
-// @version      0.2.0
+// @version      0.3.0
+// @updateURL    https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
+// @downloadURL  https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @description  One-time anime-list migration with manual review and dry-run
 // @match        https://anime-go.org/*
 // @match        https://www.anime-go.org/*
@@ -58,10 +60,18 @@
     });
     return [...found.values()];
   }
+  // Season-defining punctuation matters: ! vs !!, ? vs :, ××, ∬, √A, etc.
+  function exactName(value) {
+    return String(value || "").normalize("NFC").toLowerCase().replace(/\s+/g, " ").trim();
+  }
   function confidence(item, candidate) {
     const a = [clean(item.title),clean(item.russian)].filter(Boolean);
     const b = [clean(candidate.title),clean(candidate.original)].filter(Boolean);
-    if (a.some(x => b.includes(x))) return 1;
+    const originals = [item.title, item.russian].filter(Boolean).map(exactName);
+    const destinations = [candidate.original, candidate.title].filter(Boolean).map(exactName);
+    if (originals.some(x => destinations.includes(x))) return 1;
+    // Different punctuation may distinguish seasons and specials: never auto-select it.
+    if (a.some(x => b.includes(x))) return 0.84;
     let result = 0;
     a.forEach(x => b.forEach(y => {
       const xs = new Set(x.split(" ")), ys = new Set(y.split(" "));
@@ -78,7 +88,46 @@
       ? ranked[0].id : "";
     return { ranked, chosen };
   }
-  const exported = { clean, statusOf, parseList, parseCandidates, confidence, choose, statuses };
+  function parseReport(raw) {
+    const obj = typeof raw === "string" ? JSON.parse(raw.replace(/^\uFEFF/, "")) : raw;
+    if (!obj || obj.version !== 1 || !Array.isArray(obj.items) || obj.items.length > 10000)
+      throw new Error("Ожидается JSON-отчёт версии 1 от этого импортёра");
+    const items = obj.items.map((entry, index) => {
+      if (!entry || typeof entry !== "object" ||
+          !Object.hasOwn(statuses, entry.status) ||
+          typeof entry.title !== "string" ||
+          typeof entry.sourceIndex !== "number" ||
+          !Array.isArray(entry.candidates) || entry.candidates.length > 250)
+        throw new Error("Некорректная запись отчёта №" + (index + 1));
+      const candidates = entry.candidates.map(c => {
+        if (!c || !/^\d+$/.test(String(c.id)) ||
+            typeof c.href !== "string" || !/^\/anime\/[\w-]+-\d+$/.test(c.href) ||
+            typeof c.title !== "string" || typeof c.original !== "string")
+          throw new Error("Некорректная ссылка на тайтл в отчёте, строка №" + (index + 1));
+        return {id:String(c.id), href:c.href, title:c.title, original:c.original,
+          details:String(c.details || "")};
+      });
+      const item = {
+        sourceIndex: entry.sourceIndex, title:entry.title,
+        russian: String(entry.russian || ""), status:entry.status,
+        episodes: Math.max(0, Math.trunc(Number(entry.episodes) || 0)),
+        score: Math.max(0, Math.min(10, Math.trunc(Number(entry.score) || 0))),
+        candidates:[], chosen:"", note:"", result:"pending"
+      };
+      const evaluated = choose(item, candidates);
+      item.candidates = evaluated.ranked;
+      const explicit = String(entry.chosen || "");
+      item.chosen = statuses[item.status] ?
+        (explicit && item.candidates.some(c=>c.id===explicit) ? explicit : evaluated.chosen) : "";
+      item.result = entry.result === "imported" ? "imported" : "pending";
+      item.note = item.result === "imported" ? String(entry.note || "Перенесено ранее")
+        : !statuses[item.status] ? "Статус пока не поддерживается"
+        : item.chosen ? "Точное совпадение, проверьте" : "Требует проверки";
+      return item;
+    });
+    return {items, skipped:Array.isArray(obj.skipped) ? obj.skipped : []};
+  }
+  const exported = { clean, exactName, statusOf, parseList, parseCandidates, confidence, choose, parseReport, statuses };
   if (typeof module !== "undefined" && module.exports) module.exports = exported;
   if (typeof document === "undefined") return;
   if (!["anime-go.org", "www.anime-go.org"].includes(location.hostname)) return;
@@ -100,6 +149,8 @@
     '<h2>Shikimori → AnimeGO</h2><p class="help">Загрузите JSON-экспорт Shikimori. Поиск ничего не изменяет. Перед записью проверьте выбранные сезоны.</p>'+
     '<div class="controls"><input type="file" id="ag-file" accept=".json,application/json">'+
     '<button id="ag-scan">1. Поиск и предпросмотр</button><button id="ag-stop">Остановить</button></div>'+
+    '<div class="controls"><label>Или загрузите ранее сохранённый отчёт: <input type="file" id="ag-report-file" accept=".json,application/json"></label>'+
+    '<button id="ag-restore">Восстановить результаты без поиска</button></div>'+
     '<p id="ag-status">Файл пока не выбран.</p>'+
     '<div class="controls"><label><input type="checkbox" id="ag-vote"> Переносить оценки (экспериментально)</label>'+
     '<label>Максимум за запуск: <input type="number" id="ag-limit" min="1" max="10000" value="2" style="width:75px"></label>'+
@@ -142,6 +193,24 @@
       throw new Error("Необходимо войти в AnimeGO");
     if (!text.includes("short__") && !text.includes("search")) throw new Error("Формат страницы поиска изменился");
     return parseCandidates(text);
+  }
+  async function restoreReport() {
+    if (busy) return;
+    const file = el("ag-report-file").files[0];
+    if (!file) return info("Выберите сохранённый JSON-отчёт.");
+    if (file.size > 20 * 1024 * 1024) return info("Отчёт превышает 20 МБ.");
+    try {
+      const restored = parseReport(await file.text());
+      items = restored.items;
+      skipped = restored.skipped;
+      stopped = false;
+      searched = true;
+      render();
+      info("Восстановлено: " + items.length + " записей, точно выбрано: " +
+        items.filter(x=>x.chosen).length + ". Поиск НЕ запускался.");
+    } catch (error) {
+      info("Не удалось восстановить отчёт: " + error.message);
+    }
   }
   async function scan() {
     if (busy) return;
@@ -228,8 +297,9 @@
     if(!searched)return info("Сначала сделайте поиск и проверьте совпадения.");
     const batchSize=Math.max(1,Math.min(10000,Number(el("ag-limit").value)||2));
     const selected = items.filter(x=>x.chosen && statuses[x.status] && x.result!=="imported").slice(0,batchSize);
+    const allSelected = items.filter(x=>x.chosen && statuses[x.status]);
     const seenIds = new Set();
-    for (const row of selected) {
+    for (const row of allSelected) {
       if (seenIds.has(row.chosen)) return info("Несколько записей Shikimori соответствуют одному ID AnimeGO. Исправьте совпадения.");
       seenIds.add(row.chosen);
     }
@@ -261,5 +331,6 @@
   }
   el("ag-close").onclick=()=>{if(!busy)modal.style.display="none";};
   el("ag-stop").onclick=()=>{stopped=true;info("Остановка после текущего запроса...");};
-  el("ag-scan").onclick=scan;el("ag-import").onclick=apply;el("ag-report").onclick=report;
+  el("ag-scan").onclick=scan;el("ag-restore").onclick=restoreReport;
+  el("ag-import").onclick=apply;el("ag-report").onclick=report;
 })();

@@ -32,3 +32,20 @@ assert.equal(m.statuses.planned, "planned");
 assert.equal(m.statuses.completed, null);
 assert.equal(m.statuses.rewatching, null);
 console.log("PASS: anime-go.org mapping and unsupported statuses protected");
+const kaguya0={title:'Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen',russian:''};
+const kaguyaCandidates=[
+ {id:'2447',title:'Госпожа Кагуя: в любви как на войне 2 сезон',original:'Kaguya-sama wa Kokurasetai? Tensai-tachi no Renai Zunousen',href:'/anime/kaguya-sama-2447'},
+ {id:'2831',title:'Госпожа Кагуя: в любви как на войне',original:'Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen',href:'/anime/kaguya-sama-2831'}
+];
+assert.equal(m.confidence(kaguya0,kaguyaCandidates[0]),0.84);
+assert.equal(m.confidence(kaguya0,kaguyaCandidates[1]),1);
+assert.equal(m.choose(kaguya0,kaguyaCandidates).chosen,'2831');
+const sampleReport={version:1,items:[{sourceIndex:0,title:kaguya0.title,russian:'',status:'completed',score:9,episodes:12,candidates:kaguyaCandidates,chosen:'',result:'pending'}, {sourceIndex:1,title:'World Trigger',russian:'',status:'dropped',score:0,episodes:0,candidates:[{id:'4133',title:'Импульс мира',original:'World Trigger',href:'/anime/world-trigger-4133'}],chosen:'',result:'pending'}],skipped:[]};
+const restored=m.parseReport(sampleReport);
+assert.equal(restored.items.length,2);
+assert.equal(restored.items[0].chosen,'');
+assert.equal(restored.items[1].chosen,'4133');
+assert.equal(restored.items[1].status,'dropped');
+assert.throws(()=>m.parseReport({version:2,items:[]}),/JSON/);
+assert.throws(()=>m.parseReport({version:1,items:[{sourceIndex:0,title:'Bad',status:'dropped',candidates:[{id:'12',href:'https://malicious.test',title:'X',original:'X'}]}]}),/ссылк/);
+console.log('PASS: unique punctuation-aware matching and safe cached-report restore');
