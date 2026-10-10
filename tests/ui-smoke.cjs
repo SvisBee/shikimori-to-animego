@@ -21,12 +21,14 @@ function makeRow(i) {
     i === 3 ? 'Haikyuu!!' : 'Test Anime ' + i;
   const id = String(9000 + i);
   const candidate = { id, title, original: title, href: '/anime/test-title-' + id, confidence: 1 };
-  return { sourceIndex:i, title, russian:'', status, score:status==='completed' ? 8 : 0,
+  return { sourceIndex:i, title, russian:'', status, score:i===0 ? 8 : i===1 ? 7 : i===2 ? 6 : 0,
     episodes:12, candidates:[candidate],chosen:id,note:'Точное совпадение, проверьте',result:'pending' };
 }
 const rows=Array.from({length:640},(_,i)=>makeRow(i));
 const report={version:1,createdAt:new Date().toISOString(),items:rows,skipped:[]};
 const statuses=new Map();
+const scores=new Map([['9000',8]]);
+let ratingWrites=0;
 let writes=0, failOn='';
 const requests=[];
 const launchOpts={
@@ -67,7 +69,17 @@ async function main() {
         statuses.set(id,data.get('list'));writes++;
         return text(200,JSON.stringify({ok:true,list:data.get('list')}),'application/json');
       }
-      if(part==='/rate') return text(200,JSON.stringify({ok:true}),'application/json');
+      if(part==='/rate' && req.method()==='POST') {
+        const params=new URLSearchParams(req.postData()),id=params.get('anime_id');
+        if (failOn===id) return text(403,JSON.stringify({ok:false}),'application/json');
+        scores.set(id,Number(params.get('score')));ratingWrites++;
+        return text(200,JSON.stringify({ok:true}),'application/json');
+      }
+      if(/^\/anime\/test-title-\d+$/.test(part)){
+        const id=part.split('-').pop();
+        return text(200,'<html><body><div data-rate data-anime-id="'+id+
+          '" data-my-score="'+(scores.get(id)||'')+'"></div></body></html>');
+      }
       if(part==='/search') {
         return text(200,'<html><body><div class="short__items"><article class="short"><div class="short__title"><a href="/anime/standalone-5555">Standalone</a></div><div class="short__label">Standalone</div></article></div></body></html>');
       }
@@ -152,6 +164,36 @@ async function main() {
     assert.equal(await page.locator('#ag-filters').innerText().then(x=>/Перенесено 2/.test(x)),true);
     assert.equal(await page.locator('#ag-dock-report').isEnabled(),true);
     assert.equal(await page.locator('#ag-dock-stop').isDisabled(),true);
+    // RU: Оценки имеют независимую очередь, уже оценённые на AnimeGO не записываем снова.
+    // EN: Ratings have an independent queue; pre-existing matching scores are skipped.
+    assert.equal(await page.locator('#ag-rating-total').innerText(),'2');
+    assert.equal(await page.locator('#ag-rating-done').innerText(),'0');
+    assert.equal(await page.locator('#ag-rating-left').innerText(),'2');
+    await page.locator('#ag-rating-all').click();
+    assert.equal(await page.locator('#ag-rating-limit').inputValue(),'2');
+    await page.locator('#ag-rating-start').click();
+    assert.equal(await page.locator('#ag-confirm-overlay').isVisible(),true);
+    assert.match(await page.locator('#ag-confirm-list').innerText(),/8\/10/);
+    await page.locator('#ag-confirm-cancel').click();
+    assert.equal(ratingWrites,0,'Rating cancel must not write');
+    await page.locator('#ag-rating-start').click();
+    await page.locator('#ag-confirm-approve').click();
+    await page.waitForFunction(()=>document.querySelector('#ag-status').textContent.includes('2 оценок подтверждено'),{timeout:15000});
+    assert.equal(ratingWrites,1,'Existing 8/10 rating must not be written again');
+    assert.equal(scores.get('9000'),8);
+    assert.equal(scores.get('9001'),7);
+    assert.equal(statuses.get('9000'),'completed');
+    assert.equal(statuses.get('9001'),'dropped');
+    assert.equal(await page.locator('#ag-rating-done').innerText(),'2');
+    assert.equal(await page.locator('#ag-rating-left').innerText(),'0');
+    await page.locator('#ag-restore').click();
+    await page.waitForFunction(()=>document.querySelector('#ag-rating-done').textContent==='2');
+    assert.equal(await page.locator('#ag-rating-start').isDisabled(),true);
+    const ratedReport=await page.evaluate(()=>({
+      // Report item state is held in UI; read from local checkpoint for persistence proof.
+      cp:JSON.parse(localStorage.getItem('shiki-animego:checkpoint:v1:12345'))
+    }));
+    assert.equal(Object.values(ratedReport.cp.entries).filter(x=>x.ratingResult==='done').length,2);
     assert.equal(await page.locator('#ag-status').evaluate(e=>e.closest('.ag-livebar').parentElement.className), 'ag-shell');
     // RU: Ошибка сервера после первого успешного элемента останавливает всю партию.
     // EN: An API error after a successful item halts the batch and remains visible.
@@ -175,7 +217,29 @@ async function main() {
     await page.waitForFunction(()=>document.querySelector('#ag-live-meta').textContent.includes('автосохранения: 4'));
     assert.match(await page.locator('#ag-filters').innerText(),/Перенесено 3/);
     assert.match(await page.locator('#ag-filters').innerText(),/Ошибки 1/);
+    // RU: Отказ API оценок не должен менять уже перенесённые статусы.
+    // EN: Rating API failures must preserve already imported status results.
+    failOn='9002';
+    assert.equal(await page.locator('#ag-rating-left').innerText(),'1');
+    await page.locator('#ag-rating-start').click();
+    await page.locator('#ag-confirm-approve').click();
+    await page.waitForFunction(()=>document.querySelector('#ag-status').textContent.includes('1 ошибок'),{timeout:15000});
+    assert.match(await page.locator('#ag-last-error').innerText(),/HTTP 403/);
+    assert.equal(statuses.get('9002'),'planned');
+    assert.equal(scores.has('9002'),false);
+    await page.locator('#ag-restore').click();
+    await page.waitForFunction(()=>document.querySelector('#ag-rating-left').textContent==='1');
     failOn='';
+    await page.locator('#ag-rating-start').click();
+    await page.locator('#ag-confirm-approve').click();
+    await page.waitForFunction(()=>document.querySelector('#ag-status').textContent.includes('1 оценок подтверждено'),{timeout:15000});
+    assert.equal(scores.get('9002'),6);
+    assert.equal(statuses.get('9002'),'planned');
+    await page.locator('#ag-restore').click();
+    await page.waitForFunction(()=>document.querySelector('#ag-rating-left').textContent==='0');
+    await page.locator('.ag-rating-card').scrollIntoViewIfNeeded();
+    await page.screenshot({path:path.join(output,'ui-ratings.png'),fullPage:false});
+
 
 
     // RU: Проверка, что после полного нового поиска кнопки снова доступны.
@@ -188,7 +252,7 @@ async function main() {
     assert.equal(await page.locator('#ag-import').isEnabled(),true);
     assert.equal(nativeDialogs.length,0,'Unexpected browser dialog(s): '+nativeDialogs.join('; '));
     assert.equal(errors.length,0,'Browser errors: '+errors.join('; '));
-    console.log('PASS: UI desktop/mobile, 640-row report, filtering/search, 2 mocked writes and fresh-scan actions');
+    console.log('PASS: UI, 640-row report, verified ratings with independent queue, checkpoint restore and status safety');
     console.log(JSON.stringify({writes,summary:(await page.locator('#ag-status').innerText()),requestCount:requests.length,screenshots:output}));
   } finally {
     await browser.close();

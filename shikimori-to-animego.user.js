@@ -2,7 +2,7 @@
 // @name         Shikimori to AnimeGO Importer
 // @name:ru      Перенос Shikimori в AnimeGO
 // @namespace    shiki-to-animego
-// @version      0.6.2
+// @version      0.7.0
 // @updateURL    https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @downloadURL  https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @description  Import Shikimori anime into anime-go.org with preview and safety checks
@@ -45,7 +45,7 @@
       if (!status || (!title && !russian)) { skipped.push(index); return; }
       const score = Number(r.score) || 0;
       items.push({ sourceIndex:index, title, russian, status, episodes:Number(r.episodes) || 0,
-        score:Math.max(0,Math.min(10,Math.trunc(score))), candidates:[], chosen:"", note:"", result:"pending" });
+        score:Math.max(0,Math.min(10,Math.trunc(score))), candidates:[], chosen:"", note:"", result:"pending", ratingResult:"pending", ratingNote:"" });
     });
     return { items, skipped };
   }
@@ -119,7 +119,9 @@
         russian: String(entry.russian || ""), status:entry.status,
         episodes: Math.max(0, Math.trunc(Number(entry.episodes) || 0)),
         score: Math.max(0, Math.min(10, Math.trunc(Number(entry.score) || 0))),
-        candidates:[], chosen:"", note:"", result:"pending"
+        candidates:[], chosen:"", note:"", result:"pending",
+        ratingResult: entry.ratingResult === "done" ? "done" : "pending",
+        ratingNote: String(entry.ratingNote || "").slice(0,350)
       };
       const evaluated = choose(item, candidates);
       item.candidates = evaluated.ranked;
@@ -278,6 +280,16 @@
 #shiki-ag-modal .ag-confirm-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px}
 #shiki-ag-modal .ag-confirm-actions button{min-width:110px}
 @media(max-width:480px){#shiki-ag-modal .ag-confirm-panel{padding:17px}#shiki-ag-modal .ag-confirm-actions button{flex:1}}
+
+#shiki-ag-modal .ag-rating-card{margin:0 0 20px;border-color:#4f467e;background:linear-gradient(120deg,#1d2340,#171e2b 50%)}
+#shiki-ag-modal .ag-rating-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:12px 0}
+#shiki-ag-modal .ag-rating-counter{display:flex;flex-direction:column;gap:3px;padding:12px;background:#101928;border:1px solid #364157;border-radius:11px}
+#shiki-ag-modal .ag-rating-counter strong{color:#eae6ff;font-size:25px;line-height:1.2;font-variant-numeric:tabular-nums}
+#shiki-ag-modal .ag-rating-counter span{color:#a9b6c9;font-size:11px}
+#shiki-ag-modal .ag-rating-actions{display:flex;align-items:flex-end;flex-wrap:wrap;gap:8px;margin-top:10px}
+#shiki-ag-modal .ag-rating-actions .ag-setting{width:150px}
+@media(max-width:640px){#shiki-ag-modal .ag-rating-grid{grid-template-columns:1fr 1fr;gap:7px}}
+@media(max-width:420px){#shiki-ag-modal .ag-rating-actions>button{flex:1}#shiki-ag-modal .ag-rating-grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){#shiki-ag-open,#shiki-ag-modal button,#shiki-ag-modal #ag-progressbar{transition:none!important}}
 `;
   document.head.append(style);
@@ -351,17 +363,32 @@
             <input type="number" id="ag-limit" min="1" max="10000" value="2">
           </label>
         </div>
-        <label class="ag-check" for="ag-vote">
-          <input type="checkbox" id="ag-vote">
-          <span>Дополнительно переносить оценки <span class="ag-muted">(отдельная экспериментальная операция)</span></span>
-        </label>
-        <p class="ag-hint">Оценка не определяет статус «Просмотрено». В первом запуске оставь галочку выключенной, а лимит поставь на 1–2 аниме. Фильтры и поиск влияют только на отображение, не на порядок импорта.</p>
+        <p class="ag-hint">Этот блок переносит только статусы. Для оценок ниже предусмотрена отдельная очередь со своим счётчиком и лимитом. Фильтры и поиск влияют только на отображение, не на порядок импорта.</p>
         <div class="ag-actions">
           <button type="button" id="ag-import" class="ag-primary">✓ Импортировать выбранные</button>
           <button type="button" id="ag-report">⇩ Сохранить отчёт JSON</button>
         </div>
       </section>
     </div>
+    <section class="ag-card ag-rating-card" aria-labelledby="ag-rating-head">
+      <div class="ag-section-top">
+        <div class="ag-heading"><span class="ag-step">★</span><h3 id="ag-rating-head">Отдельный перенос оценок</h3></div>
+        <span class="ag-muted">После переноса статусов</span>
+      </div>
+      <div class="ag-rating-grid">
+        <div class="ag-rating-counter"><strong id="ag-rating-total">0</strong><span>С оценками на Shikimori и перенесённым статусом</span></div>
+        <div class="ag-rating-counter"><strong id="ag-rating-done">0</strong><span>Оценки проверены на AnimeGO</span></div>
+        <div class="ag-rating-counter"><strong id="ag-rating-left">0</strong><span>Осталось проверить и синхронизировать</span></div>
+      </div>
+      <div class="ag-rating-actions">
+        <label class="ag-setting" for="ag-rating-limit">Оценок за запуск
+          <input type="number" id="ag-rating-limit" min="1" max="10000" value="2">
+        </label>
+        <button type="button" id="ag-rating-all">Указать все оставшиеся</button>
+        <button type="button" id="ag-rating-start" class="ag-primary">★ Синхронизировать оценки</button>
+      </div>
+      <p class="ag-hint">Счётчик «осталось» показывает ещё не проверенные оценки, а не обязательно отсутствующие на AnimeGO. Перед записью скрипт сравнит оценку на сайте: совпадающие пропустит, остальные выставит и проверит повторно. Статусы не изменяются. Оценки могут добавлять в «Любимые».</p>
+    </section>
     <section aria-labelledby="ag-preview-head">
       <div class="ag-section-top">
         <div class="ag-heading"><span class="ag-step">3</span><h3 id="ag-preview-head">Проверка совпадений</h3></div>
@@ -394,7 +421,7 @@
     </section>
     <footer class="ag-footer">
       <span>Не закрывай вкладку во время импорта. Неподтверждённые совпадения не переносятся.</span>
-      <span>v0.6.2 beta · RU / EN</span>
+      <span>v0.7.0 beta · RU / EN</span>
     </footer>
   </div>
   <div id="ag-confirm-overlay" class="ag-confirm-overlay" hidden>
@@ -487,7 +514,11 @@
   function saveCheckpoint(row) {
     const saved=getCheckpoint();
     if (!saved) throw new Error("Не удалось прочитать локальное автосохранение.");
-    saved.entries[rowKey(row)]={result:row.result,note:String(row.note||"").slice(0,350)};
+    saved.entries[rowKey(row)]={
+      result:row.result, note:String(row.note||"").slice(0,350),
+      ratingResult:row.ratingResult === "done" ? "done" : "pending", ratingScore:row.score,
+      ratingNote:String(row.ratingNote||"").slice(0,350)
+    };
     saved.updatedAt=new Date().toISOString();
     try {window.localStorage.setItem(checkpointKey(),JSON.stringify(saved));}
     catch (_) {throw new Error("Автосохранение не удалось. Остановите импорт и скачайте отчёт.");}
@@ -498,10 +529,18 @@
     let restored=0;
     items.forEach(row=>{
       const state=saved.entries[rowKey(row)];
-      if (!state || row.result === "imported" || !["imported","error","verify_failed"].includes(state.result)) return;
-      row.result=state.result;
-      row.note=state.note || "";
-      restored++;
+      if (!state) return;
+      let changed=false;
+      if (row.result !== "imported" && ["imported","error","verify_failed"].includes(state.result)) {
+        row.result=state.result;
+        row.note=state.note || "";
+        changed=true;
+      }
+      if (row.ratingResult !== "done" && state.ratingResult === "done" && state.ratingScore === row.score && row.result === "imported") {
+        row.ratingResult="done"; row.ratingNote=state.ratingNote || "";
+        changed=true;
+      }
+      if (changed) restored++;
     });
     return restored;
   }
@@ -545,6 +584,16 @@
     const counters = {all: items.length, ready:0, review:0, missing:0, unsupported:0, done:0, error:0};
     items.forEach(r => counters[groupOf(r)]++);
     return counters;
+  }
+  // RU: В очереди оценок только записи с уже перенесённым статусом.
+  // EN: Ratings queue contains only titles with successfully imported statuses.
+  function ratingQueue() {
+    return items.filter(r=>r.result === "imported" && r.chosen && r.score > 0 && r.ratingResult !== "done");
+  }
+  function ratingTotals() {
+    const eligibleRows=items.filter(r=>r.result === "imported" && r.chosen && r.score > 0);
+    const done=eligibleRows.filter(r=>r.ratingResult === "done").length;
+    return {total:eligibleRows.length, done, left:eligibleRows.length-done};
   }
   function filtered() {
     const needle = clean(el("ag-find").value);
@@ -603,6 +652,12 @@
   }
   function render() {
     const totals = counts();
+    const rates=ratingTotals();
+    el("ag-rating-total").textContent=String(rates.total);
+    el("ag-rating-done").textContent=String(rates.done);
+    el("ag-rating-left").textContent=String(rates.left);
+    el("ag-rating-start").disabled=busy || !searched || !rates.left;
+    el("ag-rating-all").disabled=busy || !searched || !rates.left;
     renderStats(totals);
     renderFilters(totals);
     const shown = filtered();
@@ -693,6 +748,7 @@
     el("ag-restore").disabled = busy;
     el("ag-report").disabled = !items.length;
     el("ag-stop").disabled = !busy;
+    el("ag-rating-limit").disabled = busy;
     el("ag-dock-stop").disabled = !busy;
     el("ag-dock-report").disabled = !items.length;
   }
@@ -821,6 +877,44 @@
     if (!data.ok) throw new Error("Сервер отклонил оценку");
     return "Оценка перенесена";
   }
+  async function ratingOnAnimeGo(row) {
+    const card=row.candidates.find(c=>c.id === row.chosen);
+    if (!card || !/^\/anime\/[\w-]+-\d+$/.test(card.href))
+      throw new Error("Не найдена подтверждённая карточка AnimeGO для оценки.");
+    const res=await fetch(card.href,{credentials:"same-origin",cache:"no-store"});
+    if (!res.ok) throw new Error("Проверка оценки: HTTP "+res.status);
+    const doc=new DOMParser().parseFromString(await res.text(),"text/html");
+    const widget=doc.querySelector("[data-rate][data-anime-id]");
+    if (!widget || widget.dataset.animeId !== String(row.chosen))
+      throw new Error("Не удалось подтвердить ID карточки или блок оценки.");
+    const value=Number(widget.dataset.myScore || 0);
+    if (!Number.isInteger(value) || value < 0 || value > 10)
+      throw new Error("Непонятное значение оценки на сайте.");
+    return value;
+  }
+  async function syncRating(row) {
+    if (!row.score || row.result !== "imported") throw new Error("Оценка доступна только для перенесённого аниме.");
+    const desired=statuses[row.status];
+    const beforeStatus=await currentWatchStatus(row.chosen);
+    if (beforeStatus.active !== desired)
+      throw new Error("Статус на AnimeGO не совпадает с Shikimori. Оценка не изменена.");
+    const current=await ratingOnAnimeGo(row);
+    let message="Уже стоит оценка "+row.score+"/10";
+    if (current !== row.score) {
+      await postVote(row);
+      message="Оценка установлена: "+row.score+"/10";
+    }
+    let confirmed=await ratingOnAnimeGo(row);
+    for (let i=0;i<2 && confirmed !== row.score;i++) {
+      await wait(450);
+      confirmed=await ratingOnAnimeGo(row);
+    }
+    if (confirmed !== row.score) throw new Error("Оценка не подтвердилась, проверьте тайтл вручную.");
+    const afterStatus=await currentWatchStatus(row.chosen);
+    if (afterStatus.active !== desired)
+      throw new Error("Статус неожиданно изменился после оценки. Остановлено для проверки.");
+    return message + " · статус сохранён";
+  }
   function animePathMatches(path, animeId) {
     const matched = String(path || "").match(/^\/anime\/[^/?#]*-(\d+)(?:[?#]|$)/);
     return Boolean(matched) && matched[1] === String(animeId);
@@ -891,24 +985,9 @@
             failure.needsVerification = true;
             throw failure;
           }
-          if (el("ag-vote").checked && r.score) {
-            r.note += "; " + await postVote(r);
-            const rechecked = await completedState(r.chosen);
-            if (!rechecked.present || rechecked.score !== r.score) {
-              const failure = new Error("Не удалось подтвердить оценку/статус в профиле");
-              failure.needsVerification = true;
-              throw failure;
-            }
-          }
           r.note += "; статус подтверждён в профиле";
         } else {
-          // RU: Оценки могут влиять на «Любимые», поэтому статус ставится последним.
-          // EN: Ratings may affect Favorites, so apply the requested status last.
-          if (el("ag-vote").checked && r.score) {
-            const result = await postVote(r);
-            r.note = result + "; ";
-          } else r.note = "";
-          r.note += await postStatus(r);
+          r.note = await postStatus(r);
         }
         r.result="imported"; success++;
       }catch(e){
@@ -936,6 +1015,58 @@
     info(message,stopped || failed ? "error" : "success");
     if (!failed) live(message);
   }
+  async function applyRatings() {
+    if (busy || confirmResolver || !searched) return;
+    const available=ratingQueue();
+    if (!available.length) return info("Пока нет оценок для синхронизации.");
+    const limit=Math.max(1,Math.min(10000,Number(el("ag-rating-limit").value)||2));
+    const selected=available.slice(0,limit);
+    try {ensureCheckpoint();} catch(e){return info("Ошибка: "+e.message,"error");}
+    const approved=await askConfirmation({
+      title:"Перенести оценки для "+selected.length+" аниме?",
+      description:"Будут проверены исходные оценки из Shikimori и при необходимости сохранены на AnimeGO.",
+      rows:selected.slice(0,5).map(r=>(r.title||r.russian)+" · "+r.score+"/10")
+        .concat(selected.length>5 ? ["…и ещё "+(selected.length-5)] : []),
+      note:"Статусы не должны измениться. Оценённые тайтлы могут попасть в «Любимые». Порядок определяется отчётом.",
+      approve:"Начать оценки ("+selected.length+")"
+    });
+    if (!approved) return;
+    busy=true;stopped=false;
+    let success=0,failed=0;
+    clearError();setProgress(0,selected.length);
+    el("ag-livebar").focus({preventScroll:true});
+    info("Синхронизация оценок: 0/"+selected.length);
+    live("Проверка уже выставленных оценок…");
+    render();
+    for (const [index,row] of selected.entries()) {
+      if (stopped) break;
+      const title=row.title||row.russian;
+      live("Оценки "+(index+1)+"/"+selected.length+" · "+title+" · "+row.score+"/10");
+      try {
+        row.ratingNote=await syncRating(row);
+        row.ratingResult="done";success++;
+      } catch(e) {
+        row.ratingResult="error";row.ratingNote=String(e.message||e);failed++;
+        stopped=true; // RU/EN: never bulk-continue after an unverified rating/status.
+        live("Остановлено на оценке «"+title+"»",title+": "+row.ratingNote);
+      }
+      try {saveCheckpoint(row);}
+      catch(e){stopped=true;live("Автосохранение оценок не удалось",e.message);}
+      setProgress(success+failed,selected.length);
+      render();
+      info("Оценки: "+(success+failed)+"/"+selected.length+" · подтверждено "+success+
+        " · ошибок "+failed,failed ? "error" : "info");
+      if (!stopped) await wait(900);
+    }
+    busy=false;
+    render();
+    const remaining=selected.length-success-failed;
+    const summary=(stopped?"Остановлено":"Готово")+": "+success+
+      " оценок подтверждено, "+failed+" ошибок"+
+      (remaining?", не обработано "+remaining:"")+". Прогресс сохранён.";
+    info(summary,stopped||failed?"error":"success");
+    if (!failed) live(summary);
+  }
   function report() {
     const contents=JSON.stringify({version:1,createdAt:new Date().toISOString(),items,skipped},null,2);
     const url=URL.createObjectURL(new Blob([contents],{type:"application/json"}));
@@ -949,6 +1080,11 @@
   el("ag-scan").onclick=scan;el("ag-restore").onclick=restoreReport;
   el("ag-import").onclick=apply;el("ag-report").onclick=report;
   el("ag-dock-report").onclick=report;
+  el("ag-rating-start").onclick=applyRatings;
+  el("ag-rating-all").onclick=()=>{
+    const count=ratingQueue().length;
+    if (count) el("ag-rating-limit").value=String(count);
+  };
   el("ag-clear-progress").onclick=async()=>{
     if (busy || confirmResolver) return info("Нельзя очищать автосохранение во время импорта.");
     if (!/^\d{1,12}$/.test(profileId())) return info("Сначала укажи ID своего профиля.");

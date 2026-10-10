@@ -1,5 +1,11 @@
 # История изменений / Changelog
 
+## 0.7.0 Beta - Отдельная очередь оценок / Dedicated rating synchronization
+
+**RU:** Убрана неоднозначная галочка переноса оценок вместе со статусами. Добавлен отдельный блок с тремя счётчиками: количество оценок Shikimori у тайтлов с перенесёнными статусами, подтверждённые на AnimeGO и ещё не проверенные. Отдельный лимит и кнопка «Указать все оставшиеся» избавляют от необходимости считать вручную. Перед оцениванием сравниваются текущая оценка и статус, совпадающая оценка не перезаписывается; после записи проверяются оба значения. Прогресс оценок сохраняется в JSON-отчёте и локальных checkpoint, независимо от переноса статусов. При ошибке HTTP 403 или несовпадении процесс останавливается. Добавлены Playwright-тесты уже существующей оценки, новой оценки, отказа сервера и сохранности статуса.
+
+**EN:** Removed the confusing "also rate during status import" checkbox. Added a separate rating queue with counters for Shikimori scores on imported titles, verified ratings, and unverified scores. It has its own limit plus an "All remaining" autofill button. The script compares the current rating and status first, skips already matching scores, and verifies both after a rating write. Rating progress persists independently in JSON reports and local checkpoints. HTTP 403 and verification errors halt the batch. Expanded isolated Playwright tests: matching rating, new rating, recovery after a rejected request, and unchanged list statuses.
+
 ## 0.6.2 Beta - Подтверждение внутри импортёра / In-app confirmation
 
 **RU:** Убраны системные confirm-диалоги браузера, из-за которых основной интерфейс скрывался и казалось, что прогресс не работает. Подтверждение переноса и очистки автосохранения теперь показывается поверх текущего окна импортёра. После нажатия «Начать перенос» остаётся видна фиксированная панель прогресса. Добавлены проверки отмены кнопкой и Escape, отсутствия запросов до подтверждения, отсутствия браузерных диалогов и восстановления после ошибки.
