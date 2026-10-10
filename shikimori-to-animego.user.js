@@ -2,7 +2,7 @@
 // @name         Shikimori to AnimeGO Importer
 // @name:ru      Перенос Shikimori в AnimeGO
 // @namespace    shiki-to-animego
-// @version      0.4.0
+// @version      0.4.1
 // @updateURL    https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @downloadURL  https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @description  One-time anime-list migration with manual review and dry-run
@@ -12,10 +12,11 @@
 // ==/UserScript==
 (function () {
   "use strict";
-  const statuses = { watching: "watching", completed: "completed", on_hold: "onhold", dropped: "dropped", planned: "planned", rewatching: null };
+  const statuses = { watching: "watching", completed: null, on_hold: "onhold", dropped: "dropped", planned: "planned", rewatching: null };
   const names = { watching: "Смотрю", completed: "Просмотрено", on_hold: "Отложено",
     dropped: "Брошено", planned: "Запланировано", rewatching: "Пересматриваю" };
-  const eligible = item => Boolean(statuses[item.status]) && (item.status !== "completed" || item.score > 0);
+  // Completed is intentionally disabled: /rate adds Favorites, not Completed.
+  const eligible = item => Boolean(statuses[item.status]);
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const clean = v => String(v || "").normalize("NFKC").toLowerCase().replace(/ё/g, "е")
     .replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
@@ -157,7 +158,7 @@
     '<label><input type="checkbox" id="ag-vote"> Дополнительные оценки для остальных статусов (экспериментально)</label>'+
     '<label>Максимум за запуск: <input type="number" id="ag-limit" min="1" max="10000" value="2" style="width:75px"></label>'+
     '<button id="ag-import">2. Импортировать выбранные</button><button id="ag-report">Скачать отчёт JSON</button></div>'+
-    '<p class="help">Только уникальные точные совпадения выбираются автоматически. Просмотрено (с оценкой) доступно в режиме тестирования: результат проверяется в вашем профиле. Пересматриваю и прогресс серий не поддерживаются.'+
+    '<p class="help">Только уникальные точные совпадения выбираются автоматически. Просмотрено временно отключено: оценка добавляет тайтл в Любимые, но не гарантирует Просмотрено. Пересматриваю и прогресс серий не поддерживаются.'+
     ' При ошибках 401/403/429 импорт прекращается. Не закрывайте вкладку во время записи.</p>'+
     '<div class="scroll"><table><thead><tr><th>Shikimori</th><th>Статус</th><th>Выберите AnimeGO</th><th>Результат</th></tr></thead>'+
     '<tbody id="ag-body"></tbody></table></div></section>';
