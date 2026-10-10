@@ -1,5 +1,11 @@
 # История изменений / Changelog
 
+## 0.6.0 Beta - Новый интерфейс / UI redesign
+
+**RU:** Полностью переработано окно импорта: тёмная тема, карточки статистики, поиск, фильтры «готово/проверить/не найдено/перенесено/ошибки», отображение по 50 записей, мобильные карточки и полоска прогресса. Добавлено понятное предупреждение, что фильтр не меняет очередь импорта, а перед подтверждением показываются реальные названия выбранных тайтлов. После завершения поиска кнопки корректно разблокируются. Браузерные Playwright-тесты изолированы от настоящего сайта и используют 640 синтетических записей. Применены подходы из скиллов дизайн-инженерии, QA и UI/UX.
+
+**EN:** Complete import dialog redesign: dark theme, summary counters, search and filters (ready/review/missing/imported/errors), 50-row incremental rendering, mobile cards and progress display. Explicitly warn that filters do not change import order, and show exact target titles in the confirmation prompt. Buttons are correctly re-enabled after scanning. Isolated Playwright browser tests use 640 synthetic records and intercept all AnimeGO network requests. Guidance adapted from existing design-engineering, QA and UI/UX skills.
+
 ## 0.5.0 Beta - Отдельный статус «Просмотрено» / Independent Completed status
 
 **RU:** По результатам проверки реального аккаунта обнаружено, что оценка и «Любимые» не означают статус «Просмотрено». Исследован официальный интерфейс `/api/watchlist/{id}`: для завершённых тайтлов доступно `data-fav-list="completed"`. Импорт «Просмотрено» переведён на `/fav/set`, оценка остаётся отдельной необязательной операцией. После записи проверяется фактический список профиля. Все комментарии к важной логике, документация и сведения релиза публикуются на русском и английском. **Автоматическое добавление в «Просмотрено» ещё ожидает живого теста 1 тайтла.**

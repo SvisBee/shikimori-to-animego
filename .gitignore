@@ -5,3 +5,6 @@
 .env
 *.log
 node_modules/
+
+# Local Playwright screenshots (only curated synthetic previews go to docs)
+artifacts/
