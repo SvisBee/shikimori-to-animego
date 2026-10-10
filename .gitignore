@@ -1,0 +1,7 @@
+﻿# Do not commit personal Shikimori exports or imported reports
+*export*.json
+*report*.json
+*.xml
+.env
+*.log
+node_modules/
