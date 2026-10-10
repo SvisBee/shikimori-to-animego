@@ -2,15 +2,15 @@
 // @name         Shikimori to AnimeGO Importer
 // @name:ru      Перенос Shikimori в AnimeGO
 // @namespace    shiki-to-animego
-// @version      0.1.0
+// @version      0.2.0
 // @description  One-time anime-list migration with manual review and dry-run
-// @match        https://animego.me/*
-// @match        https://www.animego.me/*
+// @match        https://anime-go.org/*
+// @match        https://www.anime-go.org/*
 // @grant        none
 // ==/UserScript==
 (function () {
   "use strict";
-  const statuses = { watching: 1, completed: 2, on_hold: 3, dropped: 4, planned: 5, rewatching: 6 };
+  const statuses = { watching: "watching", completed: null, on_hold: "onhold", dropped: "dropped", planned: "planned", rewatching: null };
   const names = { watching: "Смотрю", completed: "Просмотрено", on_hold: "Отложено",
     dropped: "Брошено", planned: "Запланировано", rewatching: "Пересматриваю" };
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -46,14 +46,15 @@
   function parseCandidates(html) {
     const dom = new DOMParser().parseFromString(html, "text/html");
     const found = new Map();
-    dom.querySelectorAll('a[href*="/anime/"]').forEach(a => {
-      const href = a.getAttribute("href") || "";
+    dom.querySelectorAll("article.short").forEach(card => {
+      const a = card.querySelector(".short__title a[href^='/anime/']");
+      const href = a?.getAttribute("href") || "";
       const m = href.match(/\/anime\/[^/?#]*-(\d+)(?:[?#]|$)/);
       if (!m) return;
-      const title = a.querySelector(".ajax-search__item-title")?.textContent?.trim() ||
-        a.querySelector("img[alt]")?.getAttribute("alt") || "";
-      const original = a.querySelector(".fw-lighter.small")?.textContent?.trim() || "";
-      if (!found.has(m[1])) found.set(m[1], { id:m[1], title, original, href });
+      const title = a.textContent.trim();
+      const original = card.querySelector(".short__label")?.textContent?.trim() || "";
+      const details = card.querySelector(".short__links")?.textContent?.replace(/\s+/g, " ").trim() || "";
+      if (!found.has(m[1])) found.set(m[1], { id:m[1], title, original, details, href });
     });
     return [...found.values()];
   }
@@ -80,6 +81,7 @@
   const exported = { clean, statusOf, parseList, parseCandidates, confidence, choose, statuses };
   if (typeof module !== "undefined" && module.exports) module.exports = exported;
   if (typeof document === "undefined") return;
+  if (!["anime-go.org", "www.anime-go.org"].includes(location.hostname)) return;
   if (window.top !== window.self || document.getElementById("shiki-ag-open")) return;
   const style = document.createElement("style");
   style.textContent = "#shiki-ag-open{position:fixed;bottom:18px;right:18px;z-index:9999999;background:#4143b8;color:#fff;border:0;padding:12px;border-radius:9px;cursor:pointer}"+
@@ -102,7 +104,7 @@
     '<div class="controls"><label><input type="checkbox" id="ag-vote"> Переносить оценки (экспериментально)</label>'+
     '<label>Максимум за запуск: <input type="number" id="ag-limit" min="1" max="10000" value="2" style="width:75px"></label>'+
     '<button id="ag-import">2. Импортировать выбранные</button><button id="ag-report">Скачать отчёт JSON</button></div>'+
-    '<p class="help">Только уникальные точные совпадения выбираются автоматически. Прогресс по сериям не переносится (API пока не подтверждён).'+
+    '<p class="help">Только уникальные точные совпадения выбираются автоматически. Просмотрено и Пересматриваю временно пропускаются: API пока не подтверждён. Прогресс по сериям не переносится.'+
     ' При ошибках 401/403/429 импорт прекращается. Не закрывайте вкладку во время записи.</p>'+
     '<div class="scroll"><table><thead><tr><th>Shikimori</th><th>Статус</th><th>Выберите AnimeGO</th><th>Результат</th></tr></thead>'+
     '<tbody id="ag-body"></tbody></table></div></section>';
@@ -120,7 +122,7 @@
       const select=document.createElement("select");
       select.add(new Option("Пропустить / не найдено", ""));
       r.candidates.forEach(x=>select.add(new Option(x.title+" / "+x.original+" (ID "+x.id+", "+Math.round(x.confidence*100)+"%)",x.id)));
-      select.value=r.chosen; select.disabled=r.result==="imported";
+      select.value=r.chosen; select.disabled=r.result==="imported" || !statuses[r.status];
       select.onchange=()=>r.chosen=select.value;
       c.append(select);
       const state=document.createElement("td"); state.textContent=r.note || "Ожидает";
@@ -133,13 +135,13 @@
       document.querySelector('meta[name="csrf-token"]')?.content || "";
   }
   async function apiSearch(name) {
-    const response=await fetch("/search/all?q="+encodeURIComponent(name)+"&navbar=true",
-      {credentials:"same-origin",headers:{Accept:"application/json"}});
-    if (!response.ok) throw new Error("Поиск: HTTP "+response.status);
-    const result=await response.json();
-    if (result.status!=="success" || typeof result.data?.content!=="string")
-      throw new Error("Изменился формат ответа AnimeGO");
-    return parseCandidates(result.data.content);
+    const response = await fetch("/search?q=" + encodeURIComponent(name), {credentials:"same-origin"});
+    if (!response.ok) throw new Error("Поиск AnimeGO: HTTP " + response.status);
+    const text = await response.text();
+    if (text.includes('action="/login"') && response.url.includes("/login"))
+      throw new Error("Необходимо войти в AnimeGO");
+    if (!text.includes("short__") && !text.includes("search")) throw new Error("Формат страницы поиска изменился");
+    return parseCandidates(text);
   }
   async function scan() {
     if (busy) return;
@@ -159,8 +161,8 @@
           await wait(400);
         }
         const result=choose(r,[...seen.values()]);
-        r.candidates=result.ranked;r.chosen=result.chosen;
-        r.note=r.chosen?"Найдено точно, проверьте":"Нужна проверка";
+        r.candidates=result.ranked;r.chosen=statuses[r.status] ? result.chosen : "";
+        r.note=!statuses[r.status] ? "Статус пока не поддерживается" : r.chosen?"Найдено точно, проверьте":"Нужна проверка";
         if(i%10===0||i===items.length-1)render();
         info("Поиск "+(i+1)+"/"+items.length+"; выбрано точно "+items.filter(x=>x.chosen).length);
         await wait(450);
@@ -170,51 +172,76 @@
     } catch(e){info("Ошибка: "+e.message);}
     finally {busy=false;}
   }
-  async function postStatus(r,token) {
-    const body=new URLSearchParams();body.set("_token",token);
-    const res=await fetch("/mylist/anime/"+r.chosen+"/"+statuses[r.status]+"/add",
-      {method:"POST",credentials:"same-origin",
-        headers:{"X-Requested-With":"XMLHttpRequest","Accept":"application/json",
-          "Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},body});
-    if(!res.ok)throw new Error("HTTP "+res.status);
-    if(!(res.headers.get("content-type")||"").includes("json"))throw new Error("Не JSON, возможно сеанс истёк");
-    const data=await res.json();
-    if(data.status!=="success")throw new Error("AnimeGO: "+(data.message||data.status));
+  async function currentWatchStatus(id) {
+    const res = await fetch("/api/watchlist/" + id, {credentials:"same-origin"});
+    if (!res.ok) throw new Error("Список: HTTP " + res.status);
+    const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+    const buttons = [...doc.querySelectorAll("[data-fav-list]")];
+    if (!buttons.length) throw new Error("AnimeGO изменил интерфейс списков");
+    const active = buttons.filter(btn => btn.classList.contains("active")).map(btn => btn.dataset.favList);
+    if (active.length > 1) throw new Error("Неоднозначный текущий статус, пропущено");
+    return {available:buttons.map(b => b.dataset.favList), active:active[0] || null};
   }
-  async function postVote(r,token) {
-    if(!r.score)return;
-    const c=r.candidates.find(x=>x.id===r.chosen);
-    if(!c)throw new Error("Нет адреса аниме");
-    const page=await fetch(c.href,{credentials:"same-origin"});
-    if(!page.ok)throw new Error("Страница оценки HTTP "+page.status);
-    const doc=new DOMParser().parseFromString(await page.text(),"text/html");
-    const form=doc.querySelector('form[action$="/rating/anime/'+r.chosen+'/vote"]');
-    if(!form)throw new Error("Форма оценки отсутствует");
-    const formToken=form.querySelector('input[name="token"]')?.value;
-    const fd=new FormData();fd.set("token",formToken&&formToken!=="csrf-token"?formToken:token);
-    fd.set("rate",String(r.score));
-    const res=await fetch("/rating/anime/"+r.chosen+"/vote",
-      {method:"POST",credentials:"same-origin",headers:{"X-Requested-With":"XMLHttpRequest"},body:fd});
-    if(!res.ok)throw new Error("HTTP "+res.status);
-    const data=await res.json();
-    if(data.status!=="success")throw new Error("Оценка не принята");
+  async function postStatus(r) {
+    const desired = statuses[r.status];
+    if (!desired) throw new Error("Этот статус пока нельзя безопасно импортировать");
+    const before = await currentWatchStatus(r.chosen);
+    if (!before.available.includes(desired)) throw new Error("Статус отсутствует на AnimeGO");
+    if (before.active === desired) return "Уже в нужном списке";
+    const body = new URLSearchParams({anime_id:r.chosen, list:desired});
+    const res = await fetch("/fav/set", {
+      method:"POST", credentials:"same-origin",
+      headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8",Accept:"application/json"},
+      body
+    });
+    if (!res.ok) throw new Error("Сохранение статуса: HTTP " + res.status);
+    if (!(res.headers.get("content-type") || "").includes("json")) throw new Error("AnimeGO вернул не JSON");
+    const data = await res.json();
+    if (!data.ok) throw new Error("AnimeGO отклонил изменение статуса");
+    const after = await currentWatchStatus(r.chosen);
+    if (after.active !== desired) throw new Error("Статус не подтвердился при проверке");
+    return "Статус перенесён";
+  }
+  async function postVote(r) {
+    if (!r.score) return "Оценка отсутствует";
+    const card = r.candidates.find(c => c.id === r.chosen);
+    if (!card) throw new Error("Страница аниме не найдена");
+    const page = await fetch(card.href, {credentials:"same-origin"});
+    if (!page.ok) throw new Error("Страница оценки: HTTP " + page.status);
+    const doc = new DOMParser().parseFromString(await page.text(), "text/html");
+    const rating = doc.querySelector('[data-rate][data-anime-id]');
+    if (!rating || rating.dataset.animeId !== String(r.chosen)) throw new Error("Неверная страница оценки");
+    if (Number(rating.dataset.myScore) === r.score) return "Оценка уже установлена";
+    const body = new URLSearchParams({anime_id:r.chosen, score:String(r.score)});
+    const res = await fetch("/rate", {
+      method:"POST", credentials:"same-origin",
+      headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8",Accept:"application/json"},
+      body
+    });
+    if (!res.ok) throw new Error("Оценка: HTTP " + res.status);
+    const data = await res.json();
+    if (!data.ok) throw new Error("Сервер отклонил оценку");
+    return "Оценка перенесена";
   }
   async function apply() {
     if(busy)return;
     if(!searched)return info("Сначала сделайте поиск и проверьте совпадения.");
     const batchSize=Math.max(1,Math.min(10000,Number(el("ag-limit").value)||2));
-    const selected=items.filter(x=>x.chosen&&x.result!=="imported").slice(0,batchSize);
+    const selected = items.filter(x=>x.chosen && statuses[x.status] && x.result!=="imported").slice(0,batchSize);
+    const seenIds = new Set();
+    for (const row of selected) {
+      if (seenIds.has(row.chosen)) return info("Несколько записей Shikimori соответствуют одному ID AnimeGO. Исправьте совпадения.");
+      seenIds.add(row.chosen);
+    }
     if(!selected.length)return info("Нет выбранных аниме для переноса.");
-    const token=csrf();
-    if(!token)return info("CSRF-токен не найден. Войдите в AnimeGO и откройте страницу с вашим списком.");
     if(!confirm("Изменить список AnimeGO для "+selected.length+" аниме? Вы проверили правильность сезонов?"))return;
     busy=true;stopped=false;let success=0,failed=0;
     for(const r of selected) {
       if(stopped)break;
       try {
-        await postStatus(r,token);r.result="imported";r.note="Статус перенесён";success++;
+        r.note=await postStatus(r);r.result="imported";success++;
         if(el("ag-vote").checked&&r.score) {
-          try{await postVote(r,token);r.note+="; оценка перенесена";}
+          try{r.note+="; "+(await postVote(r));}
           catch(e){r.note+="; ОЦЕНКА НЕ ПЕРЕНЕСЕНА: "+e.message;}
         }
       }catch(e){
