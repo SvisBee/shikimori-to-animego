@@ -2,7 +2,6 @@
 
 **[Русский](#русский) · [English](#english)**
 
-[![CI](https://github.com/SvisBee/shikimori-to-animego/actions/workflows/ci.yml/badge.svg)](https://github.com/SvisBee/shikimori-to-animego/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/SvisBee/shikimori-to-animego)](https://github.com/SvisBee/shikimori-to-animego/releases/latest)
 
