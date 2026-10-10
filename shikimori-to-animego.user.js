@@ -2,7 +2,7 @@
 // @name         Shikimori to AnimeGO Importer
 // @name:ru      Перенос Shikimori в AnimeGO
 // @namespace    shiki-to-animego
-// @version      0.3.0
+// @version      0.4.0
 // @updateURL    https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @downloadURL  https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @description  One-time anime-list migration with manual review and dry-run
@@ -12,9 +12,10 @@
 // ==/UserScript==
 (function () {
   "use strict";
-  const statuses = { watching: "watching", completed: null, on_hold: "onhold", dropped: "dropped", planned: "planned", rewatching: null };
+  const statuses = { watching: "watching", completed: "completed", on_hold: "onhold", dropped: "dropped", planned: "planned", rewatching: null };
   const names = { watching: "Смотрю", completed: "Просмотрено", on_hold: "Отложено",
     dropped: "Брошено", planned: "Запланировано", rewatching: "Пересматриваю" };
+  const eligible = item => Boolean(statuses[item.status]) && (item.status !== "completed" || item.score > 0);
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const clean = v => String(v || "").normalize("NFKC").toLowerCase().replace(/ё/g, "е")
     .replace(/[^\p{L}\p{N}]+/gu, " ").replace(/\s+/g, " ").trim();
@@ -117,17 +118,17 @@
       const evaluated = choose(item, candidates);
       item.candidates = evaluated.ranked;
       const explicit = String(entry.chosen || "");
-      item.chosen = statuses[item.status] ?
+      item.chosen = eligible(item) ?
         (explicit && item.candidates.some(c=>c.id===explicit) ? explicit : evaluated.chosen) : "";
-      item.result = entry.result === "imported" ? "imported" : "pending";
-      item.note = item.result === "imported" ? String(entry.note || "Перенесено ранее")
-        : !statuses[item.status] ? "Статус пока не поддерживается"
+      item.result = entry.result === "imported" ? "imported" : entry.result === "verify_failed" ? "verify_failed" : "pending";
+      item.note = (item.result === "imported" || item.result === "verify_failed") ? String(entry.note || "Требуется ручная проверка")
+        : !eligible(item) ? "Статус пока не поддерживается"
         : item.chosen ? "Точное совпадение, проверьте" : "Требует проверки";
       return item;
     });
     return {items, skipped:Array.isArray(obj.skipped) ? obj.skipped : []};
   }
-  const exported = { clean, exactName, statusOf, parseList, parseCandidates, confidence, choose, parseReport, statuses };
+  const exported = { clean, exactName, statusOf, parseList, parseCandidates, confidence, choose, parseReport, statuses, eligible, animePathMatches: (path,id)=>{const m=String(path||"").match(/^\/anime\/[^/?#]*-(\d+)(?:[?#]|$)/);return Boolean(m)&&m[1]===String(id);} };
   if (typeof module !== "undefined" && module.exports) module.exports = exported;
   if (typeof document === "undefined") return;
   if (!["anime-go.org", "www.anime-go.org"].includes(location.hostname)) return;
@@ -152,14 +153,17 @@
     '<div class="controls"><label>Или загрузите ранее сохранённый отчёт: <input type="file" id="ag-report-file" accept=".json,application/json"></label>'+
     '<button id="ag-restore">Восстановить результаты без поиска</button></div>'+
     '<p id="ag-status">Файл пока не выбран.</p>'+
-    '<div class="controls"><label><input type="checkbox" id="ag-vote"> Переносить оценки (экспериментально)</label>'+
+    '<div class="controls"><label>Ваш ID профиля AnimeGO: <input id="ag-profile-id" type="text" inputmode="numeric" placeholder="например 11959" maxlength="12" style="width:100px"></label>'+
+    '<label><input type="checkbox" id="ag-vote"> Дополнительные оценки для остальных статусов (экспериментально)</label>'+
     '<label>Максимум за запуск: <input type="number" id="ag-limit" min="1" max="10000" value="2" style="width:75px"></label>'+
     '<button id="ag-import">2. Импортировать выбранные</button><button id="ag-report">Скачать отчёт JSON</button></div>'+
-    '<p class="help">Только уникальные точные совпадения выбираются автоматически. Просмотрено и Пересматриваю временно пропускаются: API пока не подтверждён. Прогресс по сериям не переносится.'+
+    '<p class="help">Только уникальные точные совпадения выбираются автоматически. Просмотрено (с оценкой) доступно в режиме тестирования: результат проверяется в вашем профиле. Пересматриваю и прогресс серий не поддерживаются.'+
     ' При ошибках 401/403/429 импорт прекращается. Не закрывайте вкладку во время записи.</p>'+
     '<div class="scroll"><table><thead><tr><th>Shikimori</th><th>Статус</th><th>Выберите AnimeGO</th><th>Результат</th></tr></thead>'+
     '<tbody id="ag-body"></tbody></table></div></section>';
   document.body.append(modal); btn.onclick=()=>modal.style.display="flex";
+  const profileMatch = location.pathname.match(/^\/user\/(\d+)(?:\/|$)/);
+  if (profileMatch) modal.querySelector("#ag-profile-id").value = profileMatch[1];
   const el = id => modal.querySelector("#"+id);
   let items = [], skipped = [], busy = false, stopped = false, searched = false;
   const info = s => el("ag-status").textContent=s;
@@ -173,7 +177,7 @@
       const select=document.createElement("select");
       select.add(new Option("Пропустить / не найдено", ""));
       r.candidates.forEach(x=>select.add(new Option(x.title+" / "+x.original+" (ID "+x.id+", "+Math.round(x.confidence*100)+"%)",x.id)));
-      select.value=r.chosen; select.disabled=r.result==="imported" || !statuses[r.status];
+      select.value=r.chosen; select.disabled=r.result==="imported" || !eligible(r);
       select.onchange=()=>r.chosen=select.value;
       c.append(select);
       const state=document.createElement("td"); state.textContent=r.note || "Ожидает";
@@ -230,8 +234,8 @@
           await wait(400);
         }
         const result=choose(r,[...seen.values()]);
-        r.candidates=result.ranked;r.chosen=statuses[r.status] ? result.chosen : "";
-        r.note=!statuses[r.status] ? "Статус пока не поддерживается" : r.chosen?"Найдено точно, проверьте":"Нужна проверка";
+        r.candidates=result.ranked;r.chosen=eligible(r) ? result.chosen : "";
+        r.note=!eligible(r) ? "Статус пока не поддерживается" : r.chosen?"Найдено точно, проверьте":"Нужна проверка";
         if(i%10===0||i===items.length-1)render();
         info("Поиск "+(i+1)+"/"+items.length+"; выбрано точно "+items.filter(x=>x.chosen).length);
         await wait(450);
@@ -292,12 +296,52 @@
     if (!data.ok) throw new Error("Сервер отклонил оценку");
     return "Оценка перенесена";
   }
+  function animePathMatches(path, animeId) {
+    const matched = String(path || "").match(/^\/anime\/[^/?#]*-(\d+)(?:[?#]|$)/);
+    return Boolean(matched) && matched[1] === String(animeId);
+  }
+  async function completedState(animeId) {
+    const id = el("ag-profile-id").value.trim();
+    if (!/^\d{1,12}$/.test(id))
+      throw new Error("Для переноса просмотренных укажите свой ID профиля AnimeGO");
+    const res = await fetch("/user/" + id, {credentials:"same-origin",cache:"no-store"});
+    if (!res.ok) throw new Error("Страница профиля: HTTP " + res.status);
+    const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+    const section = doc.querySelector('[data-tabs-content="completed"]');
+    if (!section) throw new Error("Не найден раздел «Просмотрено» на странице профиля");
+    const row = [...section.querySelectorAll(".fav-row")].find(row =>
+      [...row.querySelectorAll('a[href^="/anime/"]')]
+        .some(a => animePathMatches(a.getAttribute("href"), animeId)));
+    if (!row) return {present:false, score:null};
+    const scoreRaw = row.querySelector(".fav-row__score")?.textContent || "";
+    const match = scoreRaw.match(/\d+/);
+    return {present:true, score:match ? Number(match[0]) : null};
+  }
+  async function postCompleted(r) {
+    if (!r.score) throw new Error("Просмотрено без оценки не поддерживается");
+    const before = await completedState(r.chosen);
+    if (before.present && before.score === r.score) return "Уже в «Просмотрено» с правильной оценкой";
+    const voteResult = await postVote(r);
+    const after = await completedState(r.chosen);
+    if (!after.present || after.score !== r.score) {
+      const reason = after.present
+        ? "Тайтл в «Просмотрено», но оценка отличается"
+        : "Тайтл не найден в «Просмотрено»";
+      const error = new Error("Не удалось подтвердить перенос: " + reason + ". Проверьте профиль вручную");
+      error.needsVerification = true;
+      throw error;
+    }
+    return "Просмотрено и оценка подтверждены (" + voteResult + ")";
+  }
   async function apply() {
     if(busy)return;
     if(!searched)return info("Сначала сделайте поиск и проверьте совпадения.");
     const batchSize=Math.max(1,Math.min(10000,Number(el("ag-limit").value)||2));
-    const selected = items.filter(x=>x.chosen && statuses[x.status] && x.result!=="imported").slice(0,batchSize);
-    const allSelected = items.filter(x=>x.chosen && statuses[x.status]);
+    const selected = items.filter(x=>x.chosen && eligible(x) && x.result!=="imported" && x.result!=="verify_failed").slice(0,batchSize);
+    if (selected.some(x => x.status === "completed") &&
+        !/^\d{1,12}$/.test(el("ag-profile-id").value.trim()))
+      return info("Для переноса просмотренных укажите свой ID профиля AnimeGO");
+    const allSelected = items.filter(x=>x.chosen && eligible(x));
     const seenIds = new Set();
     for (const row of allSelected) {
       if (seenIds.has(row.chosen)) return info("Несколько записей Shikimori соответствуют одному ID AnimeGO. Исправьте совпадения.");
@@ -309,14 +353,22 @@
     for(const r of selected) {
       if(stopped)break;
       try {
-        r.note=await postStatus(r);r.result="imported";success++;
-        if(el("ag-vote").checked&&r.score) {
-          try{r.note+="; "+(await postVote(r));}
-          catch(e){r.note+="; ОЦЕНКА НЕ ПЕРЕНЕСЕНА: "+e.message;}
+        if (r.status === "completed") {
+          r.note = await postCompleted(r);
+        } else {
+          // For other statuses, vote first, then restore the desired list via /fav/set.
+          if (el("ag-vote").checked && r.score) {
+            const result = await postVote(r);
+            r.note = result + "; ";
+          } else r.note = "";
+          r.note += await postStatus(r);
         }
+        r.result="imported"; success++;
       }catch(e){
-        r.result="error";r.note=e.message;failed++;
-        if(/HTTP 401|HTTP 403|HTTP 429|Не JSON/.test(e.message))stopped=true;
+        r.result=e.needsVerification ? "verify_failed" : "error";
+        r.note=e.message;failed++;
+        if (e.needsVerification || /HTTP 401|HTTP 403|HTTP 429|Не JSON/.test(e.message))
+          stopped=true;
       }
       render();info("Перенесено "+success+"; ошибок "+failed);
       await wait(900);
