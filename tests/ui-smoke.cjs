@@ -27,7 +27,7 @@ function makeRow(i) {
 const rows=Array.from({length:640},(_,i)=>makeRow(i));
 const report={version:1,createdAt:new Date().toISOString(),items:rows,skipped:[]};
 const statuses=new Map();
-let writes=0;
+let writes=0, failOn='';
 const requests=[];
 const launchOpts={
   executablePath:process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
@@ -58,6 +58,7 @@ async function main() {
       }
       if(part==='/fav/set' && req.method()==='POST') {
         const data=new URLSearchParams(req.postData()),id=data.get('anime_id');
+        if (failOn===id) return text(403,JSON.stringify({ok:false}),'application/json');
         statuses.set(id,data.get('list'));writes++;
         return text(200,JSON.stringify({ok:true,list:data.get('list')}),'application/json');
       }
@@ -117,6 +118,43 @@ async function main() {
     assert.equal(writes,2);
     assert.equal(errors.length,0,'Browser errors: '+errors.join('; '));
     await page.screenshot({path:path.join(output,'ui-after-import.png'),fullPage:false});
+    // RU: Точки сохранения после каждой записи восстанавливаются из старого отчёта.
+    // EN: Checkpoints recover imported rows from the original pre-import report.
+    const localState=await page.evaluate(()=>JSON.parse(localStorage.getItem('shiki-animego:checkpoint:v1:12345')));
+    assert.equal(localState.version,1);
+    assert.equal(Object.keys(localState.entries).length,2);
+    assert.ok(Object.values(localState.entries).every(x=>x.result==='imported'));
+    await page.locator('#ag-restore').click();
+    await page.waitForFunction(()=>document.querySelector('#ag-live-meta').textContent.includes('автосохранения: 2'));
+    assert.match(await page.locator('#ag-preview-count').innerText(),/готов/);
+    assert.equal(await page.locator('#ag-filters').innerText().then(x=>/Перенесено 2/.test(x)),true);
+    assert.equal(await page.locator('#ag-dock-report').isEnabled(),true);
+    assert.equal(await page.locator('#ag-dock-stop').isDisabled(),true);
+    assert.equal(await page.locator('#ag-status').evaluate(e=>e.closest('.ag-livebar').parentElement.className), 'ag-shell');
+    // RU: Ошибка сервера после первого успешного элемента останавливает всю партию.
+    // EN: An API error after a successful item halts the batch and remains visible.
+    failOn='9003';
+    await page.locator('#ag-limit').fill('3');
+    page.once('dialog',async dialog=>dialog.accept());
+    await page.locator('#ag-import').click();
+    await page.waitForFunction(()=>!document.querySelector('#ag-dock-stop').disabled);
+    await page.waitForFunction(()=>document.querySelector('#ag-status').textContent.includes('Остановлено'),{timeout:15000});
+    assert.match(await page.locator('#ag-last-error').innerText(),/HTTP 403/);
+    assert.match(await page.locator('#ag-last-error').innerText(),/Haikyuu!!/);
+    assert.equal(statuses.get('9002'),'planned');
+    assert.equal(statuses.has('9004'),false);
+    assert.equal(await page.locator('#ag-dock-stop').isDisabled(),true);
+    const afterFailure=await page.evaluate(()=>JSON.parse(localStorage.getItem('shiki-animego:checkpoint:v1:12345')));
+    assert.equal(Object.keys(afterFailure.entries).length,4);
+    assert.equal(Object.values(afterFailure.entries).filter(x=>x.result==='error').length,1);
+    // Recovery from an older report should restore results and skip completed entries.
+    await page.locator('#ag-restore').click();
+    await page.waitForFunction(()=>document.querySelector('#ag-live-meta').textContent.includes('автосохранения: 4'));
+    assert.match(await page.locator('#ag-filters').innerText(),/Перенесено 3/);
+    assert.match(await page.locator('#ag-filters').innerText(),/Ошибки 1/);
+    failOn='';
+
+
     // RU: Проверка, что после полного нового поиска кнопки снова доступны.
     // EN: Fresh search must reenable the import button when finished.
     await page.locator('#ag-file').setInputFiles({name:'shiki-anime.json',mimeType:'application/json',

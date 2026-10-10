@@ -4,9 +4,13 @@
 
 Неофициальный userscript для переноса списка аниме из Shikimori на **[anime-go.org](https://anime-go.org/)** (с дефисом). Сайт `animego.me` работает на другом движке и этой версией не поддерживается.
 
-> **v0.6.0 Beta.** На настоящем аккаунте протестированы «Брошено» и «Просмотрено», включая сохранение двух разных тайтлов с оценками. **Новый интерфейс** протестирован отдельно в браузере на вымышленных данных; перед большим переносом проверьте небольшую партию на сайте. Сохраните исходный экспорт Shikimori и JSON-отчёт.
+> **v0.6.1 Beta.** На настоящем аккаунте протестированы «Брошено» и «Просмотрено», включая сохранение двух разных тайтлов с оценками. **Новый интерфейс** протестирован отдельно в браузере на вымышленных данных; перед большим переносом проверьте небольшую партию на сайте. Сохраните исходный экспорт Shikimori и JSON-отчёт.
 
 ## Возможности
+- **Прогресс всегда виден сверху окна:** текущий тайтл, обработано из партии, успешно, ошибки, остановка и сохранение отчёта. Причины остановки показываются рядом, без поиска нужной строки в таблице.
+- **Автосохранение после каждой записи:** сохраняются только статусы, совпадения и сообщения об ошибках, не исходный экспорт. Восстанови старый JSON-отчёт в том же браузере и под тем же ID профиля, чтобы продолжить без повторного импорта уже обработанных тайтлов.
+- Можно очистить локальное автосохранение кнопкой в интерфейсе; исходный JSON-отчёт при этом не изменяется.
+
 
 - **Обновлённый интерфейс v0.6:** тёмная тема, сводные показатели, поиск и фильтры, таблица с подгрузкой по 50 строк, мобильные карточки, индикатор прогресса, доступные клавиатурные действия.
 - Перед реальной записью показывается список тайтлов, которые будут изменены. **Фильтры и поиск влияют только на отображение**, а не на очередь импорта.
@@ -32,7 +36,7 @@
 ## Установка
 
 1. Установи [Tampermonkey](https://www.tampermonkey.net/) и разреши пользовательские скрипты в браузере.
-2. Открой [shikimori-to-animego.user.js](./shikimori-to-animego.user.js) и установи версию **0.6.0**, заменив предыдущую.
+2. Открой [shikimori-to-animego.user.js](./shikimori-to-animego.user.js) и установи версию **0.6.1**, заменив предыдущую.
 3. Войди в аккаунт на [anime-go.org](https://anime-go.org/), открой **свой профиль** и обнови страницу.
 4. Нажми «Импорт Shikimori». Скрипт возьмёт ID профиля из адреса, проверь, что указан именно твой.
 5. Выбери JSON-экспорт Shikimori или загрузи уже сохранённый отчёт через «Восстановить результаты без поиска».
@@ -64,7 +68,7 @@ node test.js
 node tests/ui-smoke.cjs
 ```
 
-**Приватность:** экспорт обрабатывается в браузере; скрипт обращается к текущему сайту AnimeGO, а не к серверу автора. Не прикрепляйте личные JSON-экспорты, cookie, токены и отчёты к публичным issues.
+**Приватность:** локальный прогресс хранится в localStorage на домене anime-go.org и потенциально доступен самому сайту и его скриптам. Не запускайте импорт на чужих или общих компьютерах, если это нежелательно. Экспорт обрабатывается в браузере; скрипт обращается к текущему сайту AnimeGO, а не к серверу автора. Не прикрепляйте личные JSON-экспорты, cookie, токены и отчёты к публичным issues.
 
 Лицензия MIT. [Сообщить об ошибке / Report an issue](https://github.com/SvisBee/shikimori-to-animego/issues).
 
@@ -74,9 +78,13 @@ node tests/ui-smoke.cjs
 
 An unofficial userscript to migrate your Shikimori anime list to **[anime-go.org](https://anime-go.org/)** (with a hyphen). This is not compatible with the distinct `animego.me` website.
 
-> **v0.6.0 Beta.** Both Dropped and Completed statuses have been successfully observed on a real account, including two correctly rated Completed titles. The **new interface** was separately tested in a mocked browser; verify a small live batch before bulk importing. Keep your Shikimori export and saved report.
+> **v0.6.1 Beta.** Both Dropped and Completed statuses have been successfully observed on a real account, including two correctly rated Completed titles. The **new interface** was separately tested in a mocked browser; verify a small live batch before bulk importing. Keep your Shikimori export and saved report.
 
 ### Features
+- **Always-visible progress panel:** current title, batch progress, successful items/errors, Stop and Report actions, and an immediately visible failure reason.
+- **Checkpoint after every processed item:** restore earlier results by loading the original JSON report in the same browser/profile. The complete export is never stored locally; only outcome metadata is saved.
+- Checkpoint can be cleared from the interface without affecting the original JSON report.
+
 
 - **Redesigned UI in v0.6:** dark theme, summary counters, filters/search, 50-row incremental rendering, responsive mobile cards, progress indicator, keyboard-friendly controls.
 - The confirmation dialog shows the exact titles to be modified. **Search and filters affect display only**, not the import order.
@@ -98,7 +106,7 @@ See the [desktop](docs/screenshots/desktop.png) and [mobile](docs/screenshots/mo
 ### Installation and usage
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) and enable userscripts in your browser.
-2. Install [shikimori-to-animego.user.js](./shikimori-to-animego.user.js) **v0.6.0**.
+2. Install [shikimori-to-animego.user.js](./shikimori-to-animego.user.js) **v0.6.1**.
 3. Sign in to [anime-go.org](https://anime-go.org/), preferably open your own profile, and refresh.
 4. Click **Import Shikimori**, check that the profile ID belongs to you.
 5. Load a Shikimori JSON export or restore a previously saved report without searching.
@@ -120,6 +128,6 @@ node test.js
 node tests/ui-smoke.cjs
 ```
 
-**Privacy:** the export stays in your browser; requests go to the currently opened anime-go.org website. Do not post personal exports, reports, cookies, tokens or private information to public GitHub issues.
+**Privacy:** checkpoint metadata is stored in localStorage on anime-go.org and can be accessible to that site and its scripts. Avoid shared computers if this is a concern. The full export stays in your browser; requests go to the currently opened anime-go.org website. Do not post personal exports, reports, cookies, tokens or private information to public GitHub issues.
 
 MIT licensed. Not affiliated with Shikimori or AnimeGO. [Issues](https://github.com/SvisBee/shikimori-to-animego/issues).

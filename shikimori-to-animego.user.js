@@ -2,7 +2,7 @@
 // @name         Shikimori to AnimeGO Importer
 // @name:ru      Перенос Shikimori в AnimeGO
 // @namespace    shiki-to-animego
-// @version      0.6.0
+// @version      0.6.1
 // @updateURL    https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @downloadURL  https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @description  Import Shikimori anime into anime-go.org with preview and safety checks
@@ -251,6 +251,19 @@
 #shiki-ag-modal .ag-preview-bottom button{align-self:stretch}
 #shiki-ag-modal .ag-empty{padding:18px!important}
 }
+
+#shiki-ag-modal .ag-livebar{flex:0 0 auto;background:#181f2e;padding:10px 26px 12px;border-bottom:1px solid var(--ag-border);z-index:2}
+#shiki-ag-modal .ag-live-top{display:flex;align-items:center;gap:12px}
+#shiki-ag-modal .ag-livebar .ag-status{margin:0;padding:5px 0;min-height:0;flex:1;border:0;background:transparent;overflow-wrap:anywhere}
+#shiki-ag-modal .ag-live-actions{display:flex;gap:6px;flex:0 0 auto}
+#shiki-ag-modal .ag-live-actions button{min-height:29px;padding:5px 9px;font-size:11px}
+#shiki-ag-modal .ag-live-meta{font-size:11px;color:#aab8d0;line-height:1.4;margin:3px 0 7px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#shiki-ag-modal .ag-livebar .ag-progress{height:5px;margin:0;border-radius:10px}
+#shiki-ag-modal .ag-live-error{margin-top:8px;padding:8px 11px;border-radius:8px;background:#422631;border:1px solid #a65c66;color:#ffe0e5;font-size:11px;line-height:1.5;max-height:90px;overflow:auto}
+#shiki-ag-modal .ag-live-error[hidden]{display:none}
+@media(max-width:800px){#shiki-ag-modal .ag-livebar{padding:9px 15px}}
+@media(max-width:480px){#shiki-ag-modal .ag-live-top{align-items:flex-start;flex-direction:column;gap:3px}
+#shiki-ag-modal .ag-live-actions{align-self:flex-end}#shiki-ag-modal .ag-live-meta{white-space:normal;max-height:36px;overflow:hidden}}
 @media(prefers-reduced-motion:reduce){#shiki-ag-open,#shiki-ag-modal button,#shiki-ag-modal #ag-progressbar{transition:none!important}}
 `;
   document.head.append(style);
@@ -276,14 +289,24 @@
     </div>
     <p class="ag-intro">Перенеси список со своими статусами и оценками. Сначала проверь совпадения и сезоны, только потом подтверждай изменения аккаунта.</p>
   </header>
-  <div class="ag-scroll">
-    <div class="ag-figure" id="ag-stats" aria-label="Статистика импорта"></div>
-    <div class="ag-status" id="ag-status-wrap" data-kind="info">
-      <span id="ag-status" role="status" aria-live="polite">Загрузи экспорт Shikimori или сохранённый отчёт, чтобы начать.</span>
+  <div class="ag-livebar" aria-label="Ход работы импортёра">
+    <div class="ag-live-top">
+      <div class="ag-status" id="ag-status-wrap" data-kind="info">
+        <span id="ag-status" role="status" aria-live="polite">Загрузи экспорт Shikimori или сохранённый отчёт.</span>
+      </div>
+      <div class="ag-live-actions">
+        <button type="button" id="ag-dock-report" disabled>⇩ Отчёт</button>
+        <button type="button" id="ag-dock-stop" class="ag-danger-quiet" disabled>■ Стоп</button>
+      </div>
     </div>
-    <div class="ag-progress" role="progressbar" aria-label="Прогресс поиска" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="ag-progress">
+    <div class="ag-live-meta" id="ag-live-meta" aria-live="off">Нет активных операций</div>
+    <div class="ag-progress" role="progressbar" aria-label="Прогресс операции" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="ag-progress">
       <div id="ag-progressbar"></div>
     </div>
+    <div id="ag-last-error" class="ag-live-error" role="alert" hidden></div>
+  </div>
+  <div class="ag-scroll">
+    <div class="ag-figure" id="ag-stats" aria-label="Статистика импорта"></div>
     <div class="ag-grid">
       <section class="ag-card" aria-labelledby="ag-source-head">
         <div class="ag-section-top"><div class="ag-heading"><span class="ag-step">1</span><h3 id="ag-source-head">Источник данных</h3></div><span class="ag-muted">JSON • Shikimori</span></div>
@@ -300,7 +323,9 @@
           <span class="ag-file-title">Уже есть отчёт? Без повторного поиска</span>
           <input type="file" id="ag-report-file" accept=".json,application/json">
         </label>
-        <div class="ag-actions"><button type="button" id="ag-restore">↺ Восстановить отчёт</button></div>
+        <div class="ag-actions"><button type="button" id="ag-restore">↺ Восстановить отчёт</button>
+          <button type="button" id="ag-clear-progress" class="ag-quiet">Очистить автосохранение</button></div>
+        <p class="ag-hint">Статусы и ошибки автоматически сохраняются локально в этом браузере после каждой записи. Для продолжения открой прежний JSON-отчёт.</p>
       </section>
       <section class="ag-card" aria-labelledby="ag-settings-head">
         <div class="ag-section-top"><div class="ag-heading"><span class="ag-step">2</span><h3 id="ag-settings-head">Настройки переноса</h3></div><span class="ag-muted">Безопасный режим</span></div>
@@ -355,7 +380,7 @@
     </section>
     <footer class="ag-footer">
       <span>Не закрывай вкладку во время импорта. Неподтверждённые совпадения не переносятся.</span>
-      <span>v0.6.0 beta · RU / EN</span>
+      <span>v0.6.1 beta · RU / EN</span>
     </footer>
   </div>
 </div>
@@ -368,6 +393,53 @@
   if (profileMatch) modal.querySelector("#ag-profile-id").value = profileMatch[1];
   const el = id => modal.querySelector("#"+id);
   let items = [], skipped = [], busy = false, stopped = false, searched = false;
+  // RU: Локальный checkpoint хранит только результаты; исходный экспорт не записываем.
+  // EN: Local checkpoint stores only per-title results, not the full export.
+  const CHECKPOINT_PREFIX = "shiki-animego:checkpoint:v1:";
+  const profileId = () => el("ag-profile-id").value.trim();
+  const rowKey = row => [row.sourceIndex, row.title, row.status, row.chosen].join("|");
+  const checkpointKey = () => CHECKPOINT_PREFIX + profileId();
+  function getCheckpoint() {
+    if (!/^\d{1,12}$/.test(profileId())) return null;
+    try {
+      const raw = window.localStorage.getItem(checkpointKey());
+      const obj = raw && JSON.parse(raw);
+      return obj?.version === 1 && obj?.profile === profileId() &&
+        typeof obj?.entries === "object" ? obj : {version:1,profile:profileId(),entries:{}};
+    } catch (_) { return null; }
+  }
+  function ensureCheckpoint() {
+    if (!/^\d{1,12}$/.test(profileId()))
+      throw new Error("Укажите ID своего профиля, чтобы обеспечить автосохранение.");
+    try {
+      const key=checkpointKey();
+      const prior=window.localStorage.getItem(key);
+      window.localStorage.setItem(key,prior || JSON.stringify({version:1,profile:profileId(),entries:{}}));
+    } catch (_) {
+      throw new Error("Браузер запретил локальное сохранение. Импорт не запущен, чтобы не потерять прогресс.");
+    }
+  }
+  function saveCheckpoint(row) {
+    const saved=getCheckpoint();
+    if (!saved) throw new Error("Не удалось прочитать локальное автосохранение.");
+    saved.entries[rowKey(row)]={result:row.result,note:String(row.note||"").slice(0,350)};
+    saved.updatedAt=new Date().toISOString();
+    try {window.localStorage.setItem(checkpointKey(),JSON.stringify(saved));}
+    catch (_) {throw new Error("Автосохранение не удалось. Остановите импорт и скачайте отчёт.");}
+  }
+  function restoreCheckpoint() {
+    const saved=getCheckpoint();
+    if (!saved) return 0;
+    let restored=0;
+    items.forEach(row=>{
+      const state=saved.entries[rowKey(row)];
+      if (!state || row.result === "imported" || !["imported","error","verify_failed"].includes(state.result)) return;
+      row.result=state.result;
+      row.note=state.note || "";
+      restored++;
+    });
+    return restored;
+  }
 
   let activeFilter = "all", visibleCount = 50;
   const FILTERS = [
@@ -389,6 +461,16 @@
         : kind === "success" ? "success" : "info";
   }
   const info = setInfo;
+  function live(text,failed="") {
+    el("ag-live-meta").textContent=text;
+    const target=el("ag-last-error");
+    target.hidden=!failed;
+    if (failed) target.textContent=failed;
+  }
+  function clearError() {
+    el("ag-last-error").hidden=true;
+    el("ag-last-error").textContent="";
+  }
   function setProgress(done, total) {
     const p = total ? Math.min(100, Math.round(done * 100 / total)) : 0;
     el("ag-progressbar").style.width = p + "%";
@@ -546,6 +628,8 @@
     el("ag-restore").disabled = busy;
     el("ag-report").disabled = !items.length;
     el("ag-stop").disabled = !busy;
+    el("ag-dock-stop").disabled = !busy;
+    el("ag-dock-report").disabled = !items.length;
   }
   function csrf() {
     return document.querySelector("[data-csrf-token]")?.getAttribute("data-csrf-token") ||
@@ -573,7 +657,9 @@
       setProgress(items.length,items.length);
       stopped = false;
       searched = true;
+      const resumed=restoreCheckpoint();
       render();
+      live("Восстановлено записей: " + items.length + " · результатов автосохранения: " + resumed);
       info("Восстановлено: " + items.length + " записей, точно выбрано: " +
         items.filter(x=>x.chosen).length + ". Поиск НЕ запускался.");
     } catch (error) {
@@ -607,7 +693,10 @@
         info("Поиск "+(i+1)+"/"+items.length+"; выбрано точно "+items.filter(x=>x.chosen).length);
         await wait(450);
       }
-      searched=true;render();
+      searched=true;
+      const resumed=restoreCheckpoint();
+      render();
+      live("Поиск завершён · результатов автосохранения: " + resumed);
       if (stopped) info("Поиск остановлен. Уже найденные совпадения доступны.");
     } catch(e){info("Ошибка: "+e.message);}
     finally {busy=false;render();}
@@ -703,6 +792,7 @@
       seenIds.add(row.chosen);
     }
     if(!selected.length)return info("Нет выбранных аниме для переноса.");
+    try { ensureCheckpoint(); } catch(e) { return info("Ошибка: " + e.message,"error"); }
     // RU: Фильтры только для просмотра. Показываем реальные цели перед записью.
     // EN: Filters affect display only; explicitly confirm actual write targets.
     const preview = selected.slice(0,5).map(x => " - " + (x.title || x.russian)).join("\n");
@@ -711,9 +801,16 @@
       "\n\nФильтры и поиск не меняют очередь. Проверьте сезоны и выбранные названия."))
       return;
     busy=true;stopped=false;let success=0,failed=0;
-    setProgress(0,selected.length); render();
-    for(const r of selected) {
+    clearError();
+    setProgress(0,selected.length);
+    info("Запущен импорт " + selected.length + " аниме · 0 успешно · 0 ошибок");
+    live("Подготовка... · сохранение после каждого тайтла");
+    render();
+    for(const [index,r] of selected.entries()) {
       if(stopped)break;
+      const title=r.title || r.russian;
+      live("Обработка " + (index+1) + "/" + selected.length + " · " + title +
+        " · успешно " + success + " · ошибок " + failed);
       try {
         if (r.status === "completed") {
           // RU: Переносим сам статус отдельно от оценки, потом сверяем раздел профиля.
@@ -751,13 +848,24 @@
         if (e.needsVerification || /HTTP 401|HTTP 403|HTTP 429|Не JSON/.test(e.message))
           stopped=true;
       }
+      if (r.result === "error" || r.result === "verify_failed")
+        live("Остановлено на «" + title + "» · успешно " + success + " · ошибок " + failed,
+          title + ": " + r.note);
+      try {saveCheckpoint(r);}
+      catch(e) {stopped=true;live("Автосохранение не удалось",e.message);}
       render();setProgress(success+failed,selected.length);
-      info("Перенесено "+success+"; ошибок "+failed);
+      info("Импорт " + (success+failed) + "/" + selected.length +
+        " · успешно " + success + " · ошибок " + failed,
+        failed ? "error" : "info");
       await wait(900);
     }
     busy=false;render();
-    info("Готово/остановлено: "+success+" успешно, "+failed+" ошибок. Сохраните отчёт.",
-      stopped || failed ? "error" : "success");
+    const remaining=selected.length-success-failed;
+    const message=(stopped ? "Остановлено" : "Готово") + ": " + success +
+      " успешно, " + failed + " ошибок" + (remaining ? ", не обработано " + remaining : "") +
+      ". Прогресс сохранён в браузере.";
+    info(message,stopped || failed ? "error" : "success");
+    if (!failed) live(message);
   }
   function report() {
     const contents=JSON.stringify({version:1,createdAt:new Date().toISOString(),items,skipped},null,2);
@@ -766,9 +874,22 @@
     link.click();setTimeout(()=>URL.revokeObjectURL(url),3000);
   }
   el("ag-close").onclick=closeModal;
-  el("ag-stop").onclick=()=>{stopped=true;info("Остановка после текущего запроса...");};
+  const requestStop=()=>{stopped=true;info("Остановка после текущего запроса...");};
+  el("ag-stop").onclick=requestStop;
+  el("ag-dock-stop").onclick=requestStop;
   el("ag-scan").onclick=scan;el("ag-restore").onclick=restoreReport;
   el("ag-import").onclick=apply;el("ag-report").onclick=report;
+  el("ag-dock-report").onclick=report;
+  el("ag-clear-progress").onclick=()=>{
+    if (busy) return info("Нельзя очищать автосохранение во время импорта.");
+    if (!/^\d{1,12}$/.test(profileId())) return info("Сначала укажи ID своего профиля.");
+    if (!confirm("Удалить локальный прогресс для этого профиля?\nИсходный JSON-отчёт не изменится.")) return;
+    try {
+      window.localStorage.removeItem(checkpointKey());
+      info("Локальный прогресс очищен. Для обновления таблицы снова открой JSON-отчёт.");
+      live("Автосохранение очищено");
+    } catch(e) {info("Ошибка очистки: "+e.message,"error");}
+  };
   el("ag-find").addEventListener("input",()=>{visibleCount=50;render();});
   el("ag-more").addEventListener("click",()=>{visibleCount+=50;render();});
   modal.addEventListener("keydown",(event)=>{
