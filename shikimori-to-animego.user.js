@@ -2,7 +2,10 @@
 // @name         Shikimori to AnimeGO Importer
 // @name:ru      Перенос Shikimori в AnimeGO
 // @namespace    shiki-to-animego
-// @version      0.7.0
+// @license      MIT
+// @homepageURL  https://github.com/SvisBee/shikimori-to-animego
+// @supportURL   https://github.com/SvisBee/shikimori-to-animego/issues
+// @version      1.0.0
 // @updateURL    https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @downloadURL  https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @description  Import Shikimori anime into anime-go.org with preview and safety checks
@@ -120,7 +123,12 @@
         episodes: Math.max(0, Math.trunc(Number(entry.episodes) || 0)),
         score: Math.max(0, Math.min(10, Math.trunc(Number(entry.score) || 0))),
         candidates:[], chosen:"", note:"", result:"pending",
-        ratingResult: entry.ratingResult === "done" ? "done" : "pending",
+        // RU: устаревшее подтверждение оценки с другим баллом не переносим.
+        // EN: A confirmed rating must not be reused for a different score.
+        // Legacy reports without ratingScore remain compatible.
+        ratingResult: entry.ratingResult === "done" &&
+          (entry.ratingScore == null || Number(entry.ratingScore) === Number(entry.score))
+          ? "done" : "pending",
         ratingNote: String(entry.ratingNote || "").slice(0,350)
       };
       const evaluated = choose(item, candidates);
@@ -421,7 +429,7 @@
     </section>
     <footer class="ag-footer">
       <span>Не закрывай вкладку во время импорта. Неподтверждённые совпадения не переносятся.</span>
-      <span>v0.7.0 beta · RU / EN</span>
+      <span>v1.0.0 · RU / EN</span>
     </footer>
   </div>
   <div id="ag-confirm-overlay" class="ag-confirm-overlay" hidden>
@@ -1068,7 +1076,11 @@
     if (!failed) live(summary);
   }
   function report() {
-    const contents=JSON.stringify({version:1,createdAt:new Date().toISOString(),items,skipped},null,2);
+    // RU/EN: Keep v1 report format; attach the exact score to rating confirmations.
+    const reportItems=items.map(row=>({...row,
+      ratingScore:row.ratingResult === "done" ? row.score : null}));
+    const contents=JSON.stringify({version:1,createdAt:new Date().toISOString(),
+      items:reportItems,skipped},null,2);
     const url=URL.createObjectURL(new Blob([contents],{type:"application/json"}));
     const link=document.createElement("a");link.href=url;link.download="shiki-to-animego-report.json";
     link.click();setTimeout(()=>URL.revokeObjectURL(url),3000);

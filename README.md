@@ -1,153 +1,137 @@
-# Shikimori → AnimeGO Importer / Импортёр Shikimori → AnimeGO
+# Shikimori → AnimeGO Importer
 
-**Русский** | [English](#english)
+**[Русский](#русский) · [English](#english)**
 
-Неофициальный userscript для переноса списка аниме из Shikimori на **[anime-go.org](https://anime-go.org/)** (с дефисом). Сайт `animego.me` работает на другом движке и этой версией не поддерживается.
+[![CI](https://github.com/SvisBee/shikimori-to-animego/actions/workflows/ci.yml/badge.svg)](https://github.com/SvisBee/shikimori-to-animego/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/SvisBee/shikimori-to-animego)](https://github.com/SvisBee/shikimori-to-animego/releases/latest)
 
-> **v0.7.0 Beta.** На настоящем аккаунте протестированы «Брошено» и «Просмотрено», включая сохранение двух разных тайтлов с оценками. **Новый интерфейс** протестирован отдельно в браузере на вымышленных данных; перед большим переносом проверьте небольшую партию на сайте. Сохраните исходный экспорт Shikimori и JSON-отчёт.
+## Русский
 
-## Возможности
-- **v0.7: отдельная синхронизация оценок.** После завершения переноса статусов восстанови JSON-отчёт. Скрипт покажет количество оценок Shikimori у уже перенесённых тайтлов, сколько проверено, сколько ещё осталось. Можно выбрать 1–2 оценки для теста или нажать **«Указать все оставшиеся»**.
-- Проверяет реальный текущий статус и оценку на AnimeGO до записи. Если оценка уже совпадает, запрос `/rate` пропускается. После записи перепроверяются **и оценка, и статус**. Ошибки останавливают партию, результаты оценок тоже сохраняются в локальном checkpoint и в JSON-отчёте.
+Бесплатный неофициальный **Tampermonkey userscript** для переноса списка аниме из Shikimori на **[anime-go.org](https://anime-go.org/)**. Это *не* `animego.me`: сайты разные, скрипт поддерживает только `anime-go.org`.
 
-- **Встроенное подтверждение:** больше нет системного диалога Edge/Chrome, который скрывал импортёр. Названия выбранных аниме показываются внутри того же окна, затем сразу виден прогресс.
-- Кнопки «Отмена» и Escape закрывают подтверждение без отправки запросов. Перед импортом отображается точное число записей и первые пять названий.
+**[Установить последнюю стабильную версию](https://github.com/SvisBee/shikimori-to-animego/releases/latest)** · [Сообщить об ошибке](https://github.com/SvisBee/shikimori-to-animego/issues)
 
-- **Прогресс всегда виден сверху окна:** текущий тайтл, обработано из партии, успешно, ошибки, остановка и сохранение отчёта. Причины остановки показываются рядом, без поиска нужной строки в таблице.
-- **Автосохранение после каждой записи:** сохраняются только статусы, совпадения и сообщения об ошибках, не исходный экспорт. Восстанови старый JSON-отчёт в том же браузере и под тем же ID профиля, чтобы продолжить без повторного импорта уже обработанных тайтлов.
-- Можно очистить локальное автосохранение кнопкой в интерфейсе; исходный JSON-отчёт при этом не изменяется.
+### Возможности
 
+- Импорт JSON-экспорта Shikimori, поиск названий и **предпросмотр без записи**; автоматический выбор только при уникальном точном совпадении
+- Раздельные статусы: **Смотрю, Просмотрено, Отложено, Брошено, Запланировано**
+- **Отдельный перенос оценок**: счётчики «можно проверить / проверено / осталось», собственный лимит, кнопка «Указать все оставшиеся»
+- Проверка текущего статуса и оценки до записи, проверка результата после неё; уже совпадающие оценки не отправляются повторно
+- Локальное автосохранение после каждого обработанного тайтла, восстановление результатов из JSON-отчёта
+- Закреплённый прогресс, ошибки на виду, подтверждение внутри окна, поиск и фильтры, мобильная версия
 
-- **Обновлённый интерфейс v0.6:** тёмная тема, сводные показатели, поиск и фильтры, таблица с подгрузкой по 50 строк, мобильные карточки, индикатор прогресса, доступные клавиатурные действия.
-- Перед реальной записью показывается список тайтлов, которые будут изменены. **Фильтры и поиск влияют только на отображение**, а не на очередь импорта.
+### Установка и использование
 
-- Загрузка JSON-экспорта списка Shikimori и поиск тайтлов на AnimeGO.
-- Предпросмотр без записи (**dry-run**) и ручная проверка совпадений, сезонов, OVA и фильмов.
-- Восстановление результатов из `shiki-to-animego-report.json` без повторных сотен запросов.
-- Раздельный перенос статусов **Смотрю, Просмотрено, Отложено, Брошено, Запланировано** через `/fav/set`.
-- **Оценки теперь в отдельном блоке:** три счётчика, собственный лимит и кнопка «Указать все оставшиеся». Оценка может добавлять аниме в «Любимые», но не влияет на статус просмотра.
-- Проверка состояния перед записью, подтверждение результата после записи, ограничение размера партии (по умолчанию 2), остановка и отчёт.
-- Статус «Просмотрено» дополнительно сверяется в разделе твоего профиля.
+1. Установи [Tampermonkey](https://www.tampermonkey.net/) в Edge, Chrome или другом совместимом браузере и разреши запуск пользовательских скриптов.
+2. Открой [страницу последнего стабильного выпуска](https://github.com/SvisBee/shikimori-to-animego/releases/latest), выбери прикреплённый **`shikimori-to-animego.user.js`** и установи его в Tampermonkey. Другие файлы скачивать не требуется.
+3. Войди в аккаунт на **[anime-go.org](https://anime-go.org/)**, открой **свой профиль**, обнови страницу и нажми плавающую кнопку **«Импорт Shikimori»**.
+4. Загрузи **JSON-экспорт Shikimori**. Скрипт найдёт совпадения. Проверяй сезоны, фильмы, OVA и спецвыпуски перед подтверждением.
+5. Сначала перенеси **1–2 статуса** и проверь их в профиле. Если всё верно, увеличивай лимит. В случае ошибки импорт остановится.
+6. После переноса статусов перейди к **«Отдельный перенос оценок»**. Сначала проверь **1–2 оценки**, затем нажми **«Указать все оставшиеся»**, чтобы автоматически заполнить количество.
+7. **Сохрани итоговый JSON-отчёт**. После обновления страницы загрузи предыдущий отчёт через «Восстановить отчёт»; локальные checkpoint дополнят его уже обработанными результатами.
 
-**Пока не поддерживаются:** «Пересматриваю», количество просмотренных серий, даты, комментарии. Для некоторых текущих онгоингов AnimeGO ещё не предоставляет кнопку «Просмотрено»: скрипт пропускает их с сообщением об ошибке, не подменяя статус.
+**Важно:** фильтры меняют только видимые строки, **не** очередь импорта. Не закрывай вкладку во время записи и не удаляй исходный экспорт Shikimori.
 
-## Скриншоты интерфейса (тестовые данные)
+### Ограничения
 
-![Импортёр на компьютере, вымышленные тайтлы](docs/screenshots/desktop.png)
+- Нельзя переносить **«Пересматриваю»**, прогресс отдельных серий, даты, комментарии и пользовательские заметки.
+- Некоторые тайтлы отсутствуют на AnimeGO, а у некоторых онгоингов пока нет нужного статуса. Не подменяй их другими сезонами.
+- Оценивание на AnimeGO может добавить тайтл в **«Любимые»**. Оценка не означает «Просмотрено».
+- Используются **неофициальные внутренние эндпоинты** AnimeGO; сайт может их изменить. Всегда сохраняй резервные копии и проверяй небольшой тестовый перенос.
+- Счётчик «Осталось проверить» означает ещё **не проверенные**, а не обязательно отсутствующие оценки.
 
-![Подтверждение внутри импортёра, тестовые данные](docs/screenshots/confirmation.png)
+### Скриншоты
 
-![Отдельный режим оценок, тестовые данные](docs/screenshots/ratings.png)
+![Интерфейс для ПК на вымышленных данных](docs/screenshots/desktop.png)
 
-![Интерфейс на телефоне, вымышленные тайтлы](docs/screenshots/mobile.png)
+![Отдельный перенос оценок на вымышленных данных](docs/screenshots/ratings.png)
 
-*Скриншоты сделаны с подставными данными. Ни один реальный пользовательский экспорт не публикуется.*
+[Подтверждение переноса](docs/screenshots/confirmation.png) · [Мобильная версия](docs/screenshots/mobile.png)
 
-## Установка
+*Все публичные скриншоты используют синтетические данные.*
 
-1. Установи [Tampermonkey](https://www.tampermonkey.net/) и разреши пользовательские скрипты в браузере.
-2. Открой [shikimori-to-animego.user.js](./shikimori-to-animego.user.js) и установи версию **0.7.0**, заменив предыдущую.
-3. Войди в аккаунт на [anime-go.org](https://anime-go.org/), открой **свой профиль** и обнови страницу.
-4. Нажми «Импорт Shikimori». Скрипт возьмёт ID профиля из адреса, проверь, что указан именно твой.
-5. Выбери JSON-экспорт Shikimori или загрузи уже сохранённый отчёт через «Восстановить результаты без поиска».
-6. Проверь соответствие оригинальных названий и сезонов. Выставь лимит **1** и **не включай оценки** для первой проверки.
-7. Нажми «Импортировать выбранные» и сравни результат со своим профилем. Только после успешного теста переходи к небольшим партиям.
-8. **Для оценок:** ниже основных настроек найди блок «Отдельный перенос оценок». Убедись, что виден правильный счётчик; выбери **2** и нажми **«Синхронизировать оценки»**. Проверь результат в аккаунте.
-9. Чтобы не вводить число вручную, нажми **«Указать все оставшиеся»**, затем повторно запусти синхронизацию. При ошибке импорт остановится, а после восстановления отчёта уже подтверждённые оценки будут пропущены.
-10. Скачивай новый отчёт после каждой партии и сохраняй исходный экспорт.
+### Конфиденциальность и безопасность
 
-**Осторожно:** `/fav/set` может переключать текущую отметку. Скрипт старается не затрагивать уже правильно отмеченные записи, но эти эндпоинты неофициальные и могут меняться. При непроверенном результате остановись и проверь профиль вручную.
+Полный экспорт обрабатывается локально в браузере и не загружается на сервер разработчика. Для поиска и изменения списка выполняются запросы к текущему сайту `anime-go.org`. Результаты, ID профиля и сообщения об ошибках хранятся в **localStorage на домене AnimeGO**, поэтому могут быть доступны скриптам самого сайта. Для приватных списков не используй общий компьютер; при необходимости очисти автосохранение через интерфейс.
 
-## Технические детали
+**Не прикладывай к публичным GitHub issues** свои JSON-экспорты, отчёты, cookie, токены или другие личные данные. Репозиторий не связан с администрацией Shikimori или AnimeGO.
 
-| Действие / Operation | Адрес / Endpoint |
-|---|---|
-| Поиск / Search | `GET /search?q=...` |
-| Список статусов / List options | `GET /api/watchlist/{anime_id}` |
-| Установить статус / Set status | `POST /fav/set` |
-| Выставить оценку / Set rating | `POST /rate` |
-| Проверить просмотренное / Verify completed | `GET /user/{profile_id}` |
+### Разработка
 
-## Проверка и разработка
-
-Нужен Node.js, дополнительных npm-зависимостей нет:
+Для базовых тестов достаточно Node.js (без установки npm-зависимостей):
 
 ```bash
 node --check shikimori-to-animego.user.js
 node test.js
-
-# Optional browser UI smoke test (requires playwright-core and Edge)
-node tests/ui-smoke.cjs
+node test-report-compat.js
 ```
 
-**Приватность:** локальный прогресс хранится в localStorage на домене anime-go.org и потенциально доступен самому сайту и его скриптам. Не запускайте импорт на чужих или общих компьютерах, если это нежелательно. Экспорт обрабатывается в браузере; скрипт обращается к текущему сайту AnimeGO, а не к серверу автора. Не прикрепляйте личные JSON-экспорты, cookie, токены и отчёты к публичным issues.
+Дополнительные браузерные тесты: `node tests/ui-smoke.cjs`. Для них нужны `playwright-core` и Microsoft Edge; тестовые запросы к AnimeGO полностью подменяются и **не записывают реальные аккаунты**.
 
-Лицензия MIT. [Сообщить об ошибке / Report an issue](https://github.com/SvisBee/shikimori-to-animego/issues).
+Читайте также [CONTRIBUTING.md](CONTRIBUTING.md) и [SECURITY.md](SECURITY.md). Лицензия [MIT](LICENSE).
 
 ---
 
 ## English
 
-An unofficial userscript to migrate your Shikimori anime list to **[anime-go.org](https://anime-go.org/)** (with a hyphen). This is not compatible with the distinct `animego.me` website.
+A free, unofficial **Tampermonkey userscript** to migrate your Shikimori anime list to **[anime-go.org](https://anime-go.org/)**. It does **not** support the unrelated `animego.me` website.
 
-> **v0.7.0 Beta.** Both Dropped and Completed statuses have been successfully observed on a real account, including two correctly rated Completed titles. The **new interface** was separately tested in a mocked browser; verify a small live batch before bulk importing. Keep your Shikimori export and saved report.
+**[Install the latest stable release](https://github.com/SvisBee/shikimori-to-animego/releases/latest)** · [Report an issue](https://github.com/SvisBee/shikimori-to-animego/issues)
 
 ### Features
-- **v0.7: independent rating synchronization.** Restore your report after transferring statuses; the new panel counts eligible Shikimori scores, already confirmed ratings, and unverified ratings. Test 1–2 or use **All remaining** to populate the batch size automatically.
-- Checks current AnimeGO status and rating before changing anything; matching scores skip `/rate`. Verifies **both rating and original list status** afterwards. Stops safely on a mismatch, and persists rating checkpoints in local storage and JSON reports.
 
-- **In-app confirmation:** no more native Edge/Chrome confirmation dialog that obscures the importer. The selected titles appear inside the same interface and progress stays visible immediately after approval.
-- Cancel and Escape dismiss the confirmation without sending write requests; the dialog shows the exact batch size and up to five titles.
+- Read Shikimori JSON exports, search titles and **preview without writing**. Only unique, exact title matches are automatically selected
+- Independent status transfers: **Watching, Completed, On hold, Dropped, Planned**
+- **Separate rating sync** with eligible/verified/remaining counters, a dedicated limit and an **All remaining** button
+- Check current AnimeGO status and rating before writing, confirm both afterwards, and skip already-matching ratings
+- Save local progress after every processed title and restore results from a previous JSON report
+- Pinned progress and visible errors, in-app confirmation, filters/search and a responsive interface
 
-- **Always-visible progress panel:** current title, batch progress, successful items/errors, Stop and Report actions, and an immediately visible failure reason.
-- **Checkpoint after every processed item:** restore earlier results by loading the original JSON report in the same browser/profile. The complete export is never stored locally; only outcome metadata is saved.
-- Checkpoint can be cleared from the interface without affecting the original JSON report.
+### Install and use
 
+1. Install [Tampermonkey](https://www.tampermonkey.net/) in a supported browser and allow userscripts.
+2. Visit the [latest stable release](https://github.com/SvisBee/shikimori-to-animego/releases/latest), select the attached **`shikimori-to-animego.user.js`** and install it with Tampermonkey.
+3. Sign in to **[anime-go.org](https://anime-go.org/)**, open **your own profile**, refresh and click **Import Shikimori**.
+4. Import your **Shikimori JSON export** and review all title/season/OVA/movie matches before approving changes.
+5. Test **1–2 status writes** first; verify them in your profile. Increase the batch limit only after confirming results.
+6. Use **Separate rating sync** after statuses are done. Test **1–2 ratings**, then click **All remaining** to fill the batch count automatically.
+7. **Download the JSON report**. To resume after a refresh, restore a previous report; local checkpoints will merge already processed results.
 
-- **Redesigned UI in v0.6:** dark theme, summary counters, filters/search, 50-row incremental rendering, responsive mobile cards, progress indicator, keyboard-friendly controls.
-- The confirmation dialog shows the exact titles to be modified. **Search and filters affect display only**, not the import order.
+**Note:** filters only affect display, **not** the import queue. Keep your original export as a backup.
 
-- Read a Shikimori JSON export and search for corresponding AnimeGO titles.
-- Dry-run with manual season/title review and strict punctuation-aware exact matching.
-- Resume from an earlier `shiki-to-animego-report.json` without re-searching hundreds of titles.
-- Transfer **Watching, Completed, On hold, Dropped and Planned** independently through `/fav/set`.
-- Rating synchronization is a separate workflow with its own counters and automatic batch size. Ratings may affect Favorites but do not change watch status.
-- Avoid toggling already-correct statuses, confirm writes, stop on critical errors, limit batch sizes (default 2), export detailed reports.
-- Additionally verify Completed entries on the user's profile.
+### Limitations
 
-**Not currently supported:** Rewatching, episode progress, dates or comments. AnimeGO does not offer Completed for all ongoing titles, and the importer will not silently use another status.
+- **Rewatching**, episode progress, dates, notes and comments are not supported.
+- Some titles are absent or have no applicable AnimeGO list status. Do not select a different season as a substitute.
+- Ratings may affect **Favorites**; a rating does **not** mark a title Completed.
+- AnimeGO endpoints are **unofficial and subject to change**. Start with a small trial and keep backups.
+- **Remaining** means ratings not yet verified, not necessarily missing on AnimeGO.
 
-### UI previews (synthetic data)
+### Screenshots
 
-See the [desktop](docs/screenshots/desktop.png) and [mobile](docs/screenshots/mobile.png) screenshots above. Both use synthetic test records, not a real user's export.
+![Desktop interface with synthetic records](docs/screenshots/desktop.png)
 
-### Installation and usage
+![Dedicated rating sync with synthetic records](docs/screenshots/ratings.png)
 
-1. Install [Tampermonkey](https://www.tampermonkey.net/) and enable userscripts in your browser.
-2. Install [shikimori-to-animego.user.js](./shikimori-to-animego.user.js) **v0.7.0**.
-3. Sign in to [anime-go.org](https://anime-go.org/), preferably open your own profile, and refresh.
-4. Click **Import Shikimori**, check that the profile ID belongs to you.
-5. Load a Shikimori JSON export or restore a previously saved report without searching.
-6. Review all matches (including season/OVA/movie differences). Set the first test batch limit to **1** with ratings **off**.
-7. Confirm the imported title in your AnimeGO profile. Increase batch size only after the initial live test succeeds.
-8. **For ratings:** use the dedicated rating-sync section. Start with **2** ratings, confirm the result on your AnimeGO account, then choose **All remaining** to auto-fill the remaining number.
-9. Rating results are checkpointed independently. Restore your previous report to resume without repeating already verified scores.
-10. Save a JSON report after every major batch; keep the Shikimori export.
+[Import confirmation](docs/screenshots/confirmation.png) · [Mobile layout](docs/screenshots/mobile.png)
 
-These are **unofficial site endpoints** that may change. `/fav/set` can toggle an item off; the script checks existing state before writing and verifies the result afterwards. Never bulk-import without first checking a small sample.
+*All public screenshots use synthetic data.*
 
-### Development
+### Privacy and development
 
-Node.js required, no npm dependencies:
+The full export stays in the browser and is **not uploaded to a developer-operated server**. Requests go to the currently open AnimeGO site. Profile IDs and per-item results are stored in **localStorage on the AnimeGO domain**, accessible to that site's scripts. Avoid shared computers for private lists, and clear checkpoints when necessary.
+
+**Never publish** personal exports, reports, session cookies, tokens or account information in public GitHub issues. This project is not affiliated with Shikimori or AnimeGO.
+
+Basic tests require Node.js without npm dependencies:
 
 ```bash
 node --check shikimori-to-animego.user.js
 node test.js
-
-# Optional browser UI smoke test (requires playwright-core and Edge)
-node tests/ui-smoke.cjs
+node test-report-compat.js
 ```
 
-**Privacy:** checkpoint metadata is stored in localStorage on anime-go.org and can be accessible to that site and its scripts. Avoid shared computers if this is a concern. The full export stays in your browser; requests go to the currently opened anime-go.org website. Do not post personal exports, reports, cookies, tokens or private information to public GitHub issues.
+Optional browser smoke test: `node tests/ui-smoke.cjs` (requires `playwright-core` and Microsoft Edge, with all AnimeGO network requests mocked).
 
-MIT licensed. Not affiliated with Shikimori or AnimeGO. [Issues](https://github.com/SvisBee/shikimori-to-animego/issues).
+See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md). Licensed under [MIT](LICENSE).
