@@ -4,9 +4,12 @@
 
 Неофициальный userscript для переноса списка аниме из Shikimori на **[anime-go.org](https://anime-go.org/)** (с дефисом). Сайт `animego.me` работает на другом движке и этой версией не поддерживается.
 
-> **v0.6.1 Beta.** На настоящем аккаунте протестированы «Брошено» и «Просмотрено», включая сохранение двух разных тайтлов с оценками. **Новый интерфейс** протестирован отдельно в браузере на вымышленных данных; перед большим переносом проверьте небольшую партию на сайте. Сохраните исходный экспорт Shikimori и JSON-отчёт.
+> **v0.6.2 Beta.** На настоящем аккаунте протестированы «Брошено» и «Просмотрено», включая сохранение двух разных тайтлов с оценками. **Новый интерфейс** протестирован отдельно в браузере на вымышленных данных; перед большим переносом проверьте небольшую партию на сайте. Сохраните исходный экспорт Shikimori и JSON-отчёт.
 
 ## Возможности
+- **Встроенное подтверждение:** больше нет системного диалога Edge/Chrome, который скрывал импортёр. Названия выбранных аниме показываются внутри того же окна, затем сразу виден прогресс.
+- Кнопки «Отмена» и Escape закрывают подтверждение без отправки запросов. Перед импортом отображается точное число записей и первые пять названий.
+
 - **Прогресс всегда виден сверху окна:** текущий тайтл, обработано из партии, успешно, ошибки, остановка и сохранение отчёта. Причины остановки показываются рядом, без поиска нужной строки в таблице.
 - **Автосохранение после каждой записи:** сохраняются только статусы, совпадения и сообщения об ошибках, не исходный экспорт. Восстанови старый JSON-отчёт в том же браузере и под тем же ID профиля, чтобы продолжить без повторного импорта уже обработанных тайтлов.
 - Можно очистить локальное автосохранение кнопкой в интерфейсе; исходный JSON-отчёт при этом не изменяется.
@@ -29,6 +32,8 @@
 
 ![Импортёр на компьютере, вымышленные тайтлы](docs/screenshots/desktop.png)
 
+![Подтверждение внутри импортёра, тестовые данные](docs/screenshots/confirmation.png)
+
 ![Интерфейс на телефоне, вымышленные тайтлы](docs/screenshots/mobile.png)
 
 *Скриншоты сделаны с подставными данными. Ни один реальный пользовательский экспорт не публикуется.*
@@ -36,7 +41,7 @@
 ## Установка
 
 1. Установи [Tampermonkey](https://www.tampermonkey.net/) и разреши пользовательские скрипты в браузере.
-2. Открой [shikimori-to-animego.user.js](./shikimori-to-animego.user.js) и установи версию **0.6.1**, заменив предыдущую.
+2. Открой [shikimori-to-animego.user.js](./shikimori-to-animego.user.js) и установи версию **0.6.2**, заменив предыдущую.
 3. Войди в аккаунт на [anime-go.org](https://anime-go.org/), открой **свой профиль** и обнови страницу.
 4. Нажми «Импорт Shikimori». Скрипт возьмёт ID профиля из адреса, проверь, что указан именно твой.
 5. Выбери JSON-экспорт Shikimori или загрузи уже сохранённый отчёт через «Восстановить результаты без поиска».
@@ -78,9 +83,12 @@ node tests/ui-smoke.cjs
 
 An unofficial userscript to migrate your Shikimori anime list to **[anime-go.org](https://anime-go.org/)** (with a hyphen). This is not compatible with the distinct `animego.me` website.
 
-> **v0.6.1 Beta.** Both Dropped and Completed statuses have been successfully observed on a real account, including two correctly rated Completed titles. The **new interface** was separately tested in a mocked browser; verify a small live batch before bulk importing. Keep your Shikimori export and saved report.
+> **v0.6.2 Beta.** Both Dropped and Completed statuses have been successfully observed on a real account, including two correctly rated Completed titles. The **new interface** was separately tested in a mocked browser; verify a small live batch before bulk importing. Keep your Shikimori export and saved report.
 
 ### Features
+- **In-app confirmation:** no more native Edge/Chrome confirmation dialog that obscures the importer. The selected titles appear inside the same interface and progress stays visible immediately after approval.
+- Cancel and Escape dismiss the confirmation without sending write requests; the dialog shows the exact batch size and up to five titles.
+
 - **Always-visible progress panel:** current title, batch progress, successful items/errors, Stop and Report actions, and an immediately visible failure reason.
 - **Checkpoint after every processed item:** restore earlier results by loading the original JSON report in the same browser/profile. The complete export is never stored locally; only outcome metadata is saved.
 - Checkpoint can be cleared from the interface without affecting the original JSON report.
@@ -106,7 +114,7 @@ See the [desktop](docs/screenshots/desktop.png) and [mobile](docs/screenshots/mo
 ### Installation and usage
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) and enable userscripts in your browser.
-2. Install [shikimori-to-animego.user.js](./shikimori-to-animego.user.js) **v0.6.1**.
+2. Install [shikimori-to-animego.user.js](./shikimori-to-animego.user.js) **v0.6.2**.
 3. Sign in to [anime-go.org](https://anime-go.org/), preferably open your own profile, and refresh.
 4. Click **Import Shikimori**, check that the profile ID belongs to you.
 5. Load a Shikimori JSON export or restore a previously saved report without searching.

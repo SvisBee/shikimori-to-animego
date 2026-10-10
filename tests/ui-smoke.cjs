@@ -37,8 +37,13 @@ async function main() {
   const browser=await chromium.launch(launchOpts);
   try {
     const page=await browser.newPage({viewport:{width:1440,height:900},deviceScaleFactor:1});
-    const errors=[];
+    const errors=[], nativeDialogs=[];
     page.on('pageerror',err=>errors.push(String(err)));
+    // RU/EN: A browser-native confirm is a regression; dismiss and fail the test.
+    page.on('dialog',async dialog=>{
+      nativeDialogs.push(dialog.message());
+      await dialog.dismiss();
+    });
     await page.route('https://anime-go.org/**',async(route)=>{
       const req=route.request(),u=new URL(req.url()),part=u.pathname;
       requests.push(req.method()+' '+part);
@@ -105,13 +110,30 @@ async function main() {
     // RU/EN: batch import is mocked; check independent Completed and Dropped paths
     await page.locator('#ag-limit').fill('2');
     await page.locator('#ag-profile-id').fill('12345');
-    page.once('dialog',async dialog=>{
-      assert.match(dialog.message(),/Akudama Drive/);
-      assert.match(dialog.message(),/Test dropped anime/);
-      assert.match(dialog.message(),/Фильтры и поиск/);
-      await dialog.accept();
-    });
     await page.locator('#ag-import').click();
+    assert.equal(await page.locator('#ag-confirm-overlay').isVisible(),true);
+    assert.equal(await page.locator('#ag-status-wrap').isVisible(),true);
+    assert.match(await page.locator('#ag-confirm-title').innerText(),/2 аниме/);
+    assert.match(await page.locator('#ag-confirm-list').innerText(),/Akudama Drive/);
+    assert.match(await page.locator('#ag-confirm-list').innerText(),/Test dropped anime/);
+    assert.equal(writes,0,'Must never write before confirmation');
+    await page.screenshot({path:path.join(output,'ui-confirmation.png'),fullPage:false});
+    // RU/EN: Cancel confirmation, verify no request was sent and importer stays open.
+    await page.locator('#ag-confirm-cancel').click();
+    assert.equal(await page.locator('#ag-confirm-overlay').isHidden(),true);
+    assert.equal(writes,0);
+    assert.equal(await page.locator('#shiki-ag-modal').isVisible(),true);
+    await page.locator('#ag-import').click();
+    assert.equal(await page.locator('#ag-confirm-overlay').isVisible(),true);
+    await page.keyboard.press("Escape");
+    assert.equal(await page.locator('#ag-confirm-overlay').isHidden(),true);
+    assert.equal(writes,0,"Esc cancellation must make zero writes");
+    await page.locator('#ag-import').click();
+    assert.equal(await page.locator('#ag-confirm-overlay').isVisible(),true);
+    await page.locator('#ag-confirm-approve').click();
+    assert.equal(await page.locator('#ag-confirm-overlay').isHidden(),true);
+    assert.equal(await page.locator('#shiki-ag-modal').isVisible(),true);
+    assert.equal(await page.locator('#ag-livebar').isVisible(),true);
     await page.waitForFunction(()=>document.querySelector('#ag-status').textContent.includes('2 успешно'),{timeout:15000});
     assert.equal(statuses.get('9000'),'completed');
     assert.equal(statuses.get('9001'),'dropped');
@@ -135,8 +157,9 @@ async function main() {
     // EN: An API error after a successful item halts the batch and remains visible.
     failOn='9003';
     await page.locator('#ag-limit').fill('3');
-    page.once('dialog',async dialog=>dialog.accept());
     await page.locator('#ag-import').click();
+    assert.equal(await page.locator('#ag-confirm-overlay').isVisible(),true);
+    await page.locator('#ag-confirm-approve').click();
     await page.waitForFunction(()=>!document.querySelector('#ag-dock-stop').disabled);
     await page.waitForFunction(()=>document.querySelector('#ag-status').textContent.includes('Остановлено'),{timeout:15000});
     assert.match(await page.locator('#ag-last-error').innerText(),/HTTP 403/);
@@ -163,6 +186,7 @@ async function main() {
     await page.waitForFunction(()=>document.querySelector('#ag-status').textContent.includes('Поиск 1/1'));
     await page.waitForFunction(()=>!document.querySelector('#ag-scan').disabled);
     assert.equal(await page.locator('#ag-import').isEnabled(),true);
+    assert.equal(nativeDialogs.length,0,'Unexpected browser dialog(s): '+nativeDialogs.join('; '));
     assert.equal(errors.length,0,'Browser errors: '+errors.join('; '));
     console.log('PASS: UI desktop/mobile, 640-row report, filtering/search, 2 mocked writes and fresh-scan actions');
     console.log(JSON.stringify({writes,summary:(await page.locator('#ag-status').innerText()),requestCount:requests.length,screenshots:output}));

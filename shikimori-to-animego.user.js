@@ -2,7 +2,7 @@
 // @name         Shikimori to AnimeGO Importer
 // @name:ru      Перенос Shikimori в AnimeGO
 // @namespace    shiki-to-animego
-// @version      0.6.1
+// @version      0.6.2
 // @updateURL    https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @downloadURL  https://raw.githubusercontent.com/SvisBee/shikimori-to-animego/main/shikimori-to-animego.user.js
 // @description  Import Shikimori anime into anime-go.org with preview and safety checks
@@ -264,6 +264,20 @@
 @media(max-width:800px){#shiki-ag-modal .ag-livebar{padding:9px 15px}}
 @media(max-width:480px){#shiki-ag-modal .ag-live-top{align-items:flex-start;flex-direction:column;gap:3px}
 #shiki-ag-modal .ag-live-actions{align-self:flex-end}#shiki-ag-modal .ag-live-meta{white-space:normal;max-height:36px;overflow:hidden}}
+
+#shiki-ag-modal .ag-confirm-overlay{position:absolute;inset:0;z-index:25;display:grid;place-items:center;padding:16px;background:#060a14dc;backdrop-filter:blur(4px)}
+#shiki-ag-modal .ag-confirm-overlay[hidden]{display:none!important}
+#shiki-ag-modal .ag-confirm-panel{width:min(540px,100%);max-height:min(78vh,650px);overflow:auto;padding:24px;border:1px solid #7067bd;border-radius:17px;background:#1d2637;color:#f1f3ff;box-shadow:0 22px 85px #000a}
+#shiki-ag-modal .ag-confirm-icon{display:grid;place-items:center;width:40px;height:40px;border:1px solid #8175e888;border-radius:11px;background:#7260d52b;color:#b7abff;font-size:22px;margin-bottom:12px}
+#shiki-ag-modal .ag-confirm-panel h3{font-size:19px;margin:0 0 8px;color:#fff}
+#shiki-ag-modal .ag-confirm-panel p{color:#b9c5d9;font-size:12px;line-height:1.55;margin:6px 0 11px}
+#shiki-ag-modal .ag-confirm-list{margin:12px 0;padding:0;max-height:220px;overflow-y:auto;list-style:none;border:1px solid #3e4a60;border-radius:10px;background:#141d2a}
+#shiki-ag-modal .ag-confirm-list li{padding:9px 12px;border-bottom:1px solid #29364b;overflow-wrap:anywhere;font-size:12px;color:#e4e9f7}
+#shiki-ag-modal .ag-confirm-list li:last-child{border-bottom:0}
+#shiki-ag-modal .ag-confirm-note{padding:10px 12px;border-left:2px solid #ada0ff;border-radius:0 8px 8px 0;background:#8075d715;color:#c3c9e5!important}
+#shiki-ag-modal .ag-confirm-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px}
+#shiki-ag-modal .ag-confirm-actions button{min-width:110px}
+@media(max-width:480px){#shiki-ag-modal .ag-confirm-panel{padding:17px}#shiki-ag-modal .ag-confirm-actions button{flex:1}}
 @media(prefers-reduced-motion:reduce){#shiki-ag-open,#shiki-ag-modal button,#shiki-ag-modal #ag-progressbar{transition:none!important}}
 `;
   document.head.append(style);
@@ -289,7 +303,7 @@
     </div>
     <p class="ag-intro">Перенеси список со своими статусами и оценками. Сначала проверь совпадения и сезоны, только потом подтверждай изменения аккаунта.</p>
   </header>
-  <div class="ag-livebar" aria-label="Ход работы импортёра">
+  <div id="ag-livebar" class="ag-livebar" tabindex="-1" aria-label="Ход работы импортёра">
     <div class="ag-live-top">
       <div class="ag-status" id="ag-status-wrap" data-kind="info">
         <span id="ag-status" role="status" aria-live="polite">Загрузи экспорт Shikimori или сохранённый отчёт.</span>
@@ -380,18 +394,69 @@
     </section>
     <footer class="ag-footer">
       <span>Не закрывай вкладку во время импорта. Неподтверждённые совпадения не переносятся.</span>
-      <span>v0.6.1 beta · RU / EN</span>
+      <span>v0.6.2 beta · RU / EN</span>
     </footer>
+  </div>
+  <div id="ag-confirm-overlay" class="ag-confirm-overlay" hidden>
+    <section class="ag-confirm-panel" role="alertdialog" aria-modal="true"
+      aria-labelledby="ag-confirm-title" aria-describedby="ag-confirm-description ag-confirm-note">
+      <div class="ag-confirm-icon" aria-hidden="true">✓</div>
+      <h3 id="ag-confirm-title">Подтвердите перенос</h3>
+      <p id="ag-confirm-description"></p>
+      <ul id="ag-confirm-list" class="ag-confirm-list"></ul>
+      <p id="ag-confirm-note" class="ag-confirm-note"></p>
+      <div class="ag-confirm-actions">
+        <button id="ag-confirm-cancel" type="button">Отмена</button>
+        <button id="ag-confirm-approve" type="button" class="ag-primary">Начать импорт</button>
+      </div>
+    </section>
   </div>
 </div>
 `;
   document.body.append(modal);
+  const el = id => modal.querySelector("#"+id);
+  let confirmResolver = null;
+  function dismissConfirmation(approved) {
+    if (!confirmResolver) return;
+    const resolve=confirmResolver;
+    confirmResolver=null;
+    el("ag-confirm-overlay").hidden=true;
+    resolve(approved);
+    if (!approved) el("ag-import").focus();
+  }
+  function askConfirmation({title,description,rows=[],note,approve="Начать импорт"}) {
+    // RU: Встроенное подтверждение без системных диалогов.
+    // EN: In-modal confirmation without native browser dialogs.
+    if (confirmResolver || busy) return Promise.resolve(false);
+    el("ag-confirm-title").textContent=title;
+    el("ag-confirm-description").textContent=description;
+    el("ag-confirm-note").textContent=note;
+    el("ag-confirm-approve").textContent=approve;
+    const list=el("ag-confirm-list");
+    list.replaceChildren();
+    list.hidden=!rows.length;
+    rows.forEach(name=>{
+      const li=document.createElement("li");
+      li.textContent=name;
+      list.append(li);
+    });
+    return new Promise(resolve=>{
+      confirmResolver=resolve;
+      el("ag-confirm-overlay").hidden=false;
+      el("ag-confirm-approve").focus();
+    });
+  }
   const openModal = () => { modal.style.display = "flex"; modal.querySelector("#ag-close").focus(); };
-  const closeModal = () => { if (busy) return; modal.style.display = "none"; btn.focus(); };
+  const closeModal = () => {
+    if (confirmResolver) { dismissConfirmation(false); return; }
+    if (busy) return;
+    modal.style.display = "none"; btn.focus();
+  };
   btn.addEventListener("click", openModal);
   const profileMatch = location.pathname.match(/^\/user\/(\d+)(?:\/|$)/);
   if (profileMatch) modal.querySelector("#ag-profile-id").value = profileMatch[1];
-  const el = id => modal.querySelector("#"+id);
+  el("ag-confirm-cancel").onclick=()=>dismissConfirmation(false);
+  el("ag-confirm-approve").onclick=()=>dismissConfirmation(true);
   let items = [], skipped = [], busy = false, stopped = false, searched = false;
   // RU: Локальный checkpoint хранит только результаты; исходный экспорт не записываем.
   // EN: Local checkpoint stores only per-title results, not the full export.
@@ -778,7 +843,7 @@
     return {present:true, score:match ? Number(match[0]) : null};
   }
   async function apply() {
-    if(busy)return;
+    if (busy || confirmResolver) return;
     if(!searched)return info("Сначала сделайте поиск и проверьте совпадения.");
     const batchSize=Math.max(1,Math.min(10000,Number(el("ag-limit").value)||2));
     const selected = items.filter(x=>x.chosen && eligible(x) && x.result!=="imported" && x.result!=="verify_failed").slice(0,batchSize);
@@ -795,14 +860,18 @@
     try { ensureCheckpoint(); } catch(e) { return info("Ошибка: " + e.message,"error"); }
     // RU: Фильтры только для просмотра. Показываем реальные цели перед записью.
     // EN: Filters affect display only; explicitly confirm actual write targets.
-    const preview = selected.slice(0,5).map(x => " - " + (x.title || x.russian)).join("\n");
-    if (!confirm("Импортировать " + selected.length + " аниме в AnimeGO?\n" +
-      preview + (selected.length > 5 ? "\n - ..." : "") +
-      "\n\nФильтры и поиск не меняют очередь. Проверьте сезоны и выбранные названия."))
-      return;
+    const approved=await askConfirmation({
+      title:"Подтвердите перенос " + selected.length + " аниме",
+      description:"Проверьте названия и сезоны перед записью в аккаунт AnimeGO.",
+      rows:selected.slice(0,5).map(x=>x.title || x.russian).concat(selected.length > 5 ? ["…и ещё " + (selected.length - 5)] : []),
+      note:"Фильтры и поиск не меняют очередь. После подтверждения прогресс останется виден сверху окна.",
+      approve:"Начать перенос (" + selected.length + ")"
+    });
+    if (!approved) return;
     busy=true;stopped=false;let success=0,failed=0;
     clearError();
     setProgress(0,selected.length);
+    el("ag-livebar").focus({preventScroll:true});
     info("Запущен импорт " + selected.length + " аниме · 0 успешно · 0 ошибок");
     live("Подготовка... · сохранение после каждого тайтла");
     render();
@@ -880,10 +949,15 @@
   el("ag-scan").onclick=scan;el("ag-restore").onclick=restoreReport;
   el("ag-import").onclick=apply;el("ag-report").onclick=report;
   el("ag-dock-report").onclick=report;
-  el("ag-clear-progress").onclick=()=>{
-    if (busy) return info("Нельзя очищать автосохранение во время импорта.");
+  el("ag-clear-progress").onclick=async()=>{
+    if (busy || confirmResolver) return info("Нельзя очищать автосохранение во время импорта.");
     if (!/^\d{1,12}$/.test(profileId())) return info("Сначала укажи ID своего профиля.");
-    if (!confirm("Удалить локальный прогресс для этого профиля?\nИсходный JSON-отчёт не изменится.")) return;
+    if (!await askConfirmation({
+      title:"Удалить локальное автосохранение?",
+      description:"Будут удалены сохранённые результаты для этого профиля.",
+      note:"Исходный JSON-отчёт не изменится. Перед удалением желательно скачать актуальный отчёт.",
+      approve:"Удалить прогресс"
+    })) return;
     try {
       window.localStorage.removeItem(checkpointKey());
       info("Локальный прогресс очищен. Для обновления таблицы снова открой JSON-отчёт.");
@@ -893,9 +967,11 @@
   el("ag-find").addEventListener("input",()=>{visibleCount=50;render();});
   el("ag-more").addEventListener("click",()=>{visibleCount+=50;render();});
   modal.addEventListener("keydown",(event)=>{
-    if (event.key==="Escape" && !busy) {event.preventDefault();closeModal();}
+    if (confirmResolver && event.key==="Escape") {event.preventDefault();dismissConfirmation(false);return;}
+    if (event.key==="Escape" && !busy) {event.preventDefault();closeModal();return;}
     if (event.key!=="Tab") return;
-    const focusable = [...modal.querySelectorAll("button:not([disabled]),input:not([disabled]),select:not([disabled]),a[href]")].filter(x => x.getClientRects().length);
+    const scope=confirmResolver ? el("ag-confirm-overlay") : modal;
+    const focusable = [...scope.querySelectorAll("button:not([disabled]),input:not([disabled]),select:not([disabled]),a[href]")].filter(x => x.getClientRects().length);
     if (!focusable.length) return;
     const first=focusable[0], last=focusable[focusable.length-1];
     if (event.shiftKey && document.activeElement===first) {event.preventDefault();last.focus();}
